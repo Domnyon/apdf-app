@@ -61,11 +61,11 @@ export async function POST(req: NextRequest) {
       resultPdfBytes = await pdf.save();
     }
 
-    return new NextResponse(resultPdfBytes, {
+    return new Response(Buffer.from(resultPdfBytes), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="processed_apdf.pdf"`,
+        "Content-Disposition": 'attachment; filename="processed_apdf.pdf"',
       },
     });
 

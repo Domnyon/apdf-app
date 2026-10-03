@@ -52,21 +52,36 @@ export default function EditorPage() {
   const [processing, setProcessing] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  // تحويل صفحة من PDF إلى صورة عبر Canvas بطريقة متوافقة ومباشرة
-  const renderPdfPageToImage = async (file: File, pageNum: number): Promise<string> => {
-    // نستخدم الـ CDN بطريقة مضمونة ومتوافقة عالمياً
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as any).catch(async () => {
-      return await import("pdfjs-dist" as any);
+  // تحميل مكتبة pdfjs بشكل نقي في المتصفح فقط دون تدخل Turbopack
+  const getPdfJs = async (): Promise<any> => {
+    if (typeof window === "undefined") return null;
+    if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
+
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.onload = () => {
+        const lib = (window as any).pdfjsLib;
+        if (lib) {
+          lib.GlobalWorkerOptions.workerSrc =
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+          resolve(lib);
+        } else {
+          reject(new Error("تعذر تحميل محرك العرض"));
+        }
+      };
+      script.onerror = () => reject(new Error("فشل الاتصال بسكربت العرض"));
+      document.head.appendChild(script);
     });
+  };
 
-    if (pdfjsLib.GlobalWorkerOptions) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || "3.11.174"}/build/pdf.worker.min.js`;
-    }
-
+  // تحويل صفحة من PDF إلى صورة عبر Canvas
+  const renderPdfPageToImage = async (file: File, pageNum: number): Promise<string> => {
+    const pdfjsLib = await getPdfJs();
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({
       data: arrayBuffer,
-      cMapUrl: "https://unpkg.com/pdfjs-dist/cmaps/",
+      cMapUrl: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/",
       cMapPacked: true,
     });
     const pdf = await loadingTask.promise;
@@ -130,7 +145,7 @@ export default function EditorPage() {
       setTotalPages(count);
     } catch (err) {
       console.error(err);
-      setStatusMsg("فشل فتح الملف. تأكد أنه ملف PDF سليم وغير محمي بكلمة مرور.");
+      setStatusMsg("فشل فتح الملف. تأكد أنه ملف PDF سليم.");
     } finally {
       setProcessing(false);
       setStatusMsg(null);
@@ -272,7 +287,6 @@ export default function EditorPage() {
         return;
       }
 
-      // إذا كان مستند متعدد الصفحات: استبدال الصفحة المحددة
       const originalBytes = await originalFile.arrayBuffer();
       const pdfDoc = await PDFDocument.load(originalBytes);
       const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
@@ -321,7 +335,6 @@ export default function EditorPage() {
       </header>
 
       <main className="relative z-20 max-w-5xl mx-auto px-4 py-8">
-        {/* شاشة مؤشر التحميل العام */}
         {processing && (
           <div className="fixed inset-0 z-50 bg-[#070b12]/80 backdrop-blur-md flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
@@ -409,7 +422,7 @@ export default function EditorPage() {
           </div>
         )}
 
-        {/* 3. شاشة اختيار الصفحة في المستند المتعدد */}
+        {/* 3. شاشة اختيار الصفحة للمستند المتعدد */}
         {mode === "multi" && !activePageImage && totalPages > 0 && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-950/70 border border-slate-800 p-5 rounded-2xl">
@@ -429,7 +442,6 @@ export default function EditorPage() {
               )}
             </div>
 
-            {/* شبكة أرقام الصفحات للاختيار السريع */}
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
               {Array.from({ length: totalPages }, (_, i) => (
                 <button

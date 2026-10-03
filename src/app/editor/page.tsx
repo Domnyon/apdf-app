@@ -11,7 +11,6 @@ import {
   Type,
   PenTool,
   Image as ImageIcon,
-  Download,
   RotateCcw,
   Check,
   Sparkles,
@@ -22,6 +21,7 @@ import {
   AlignRight,
   AlignCenter,
   AlignLeft,
+  Plus,
 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 
@@ -47,23 +47,17 @@ export default function EditorPage() {
 
   const [activePageImage, setActivePageImage] = useState<string | null>(null);
   const [items, setItems] = useState<CanvasItem[]>([]);
-  const [activeTool, setActiveTool] = useState<"text" | "signature" | "stamp" | null>(null);
-
-  // إعدادات النصوص
-  const [textInput, setTextInput] = useState("");
-  const [textColor, setTextColor] = useState("#000000");
-  const [textSize, setTextSize] = useState(24);
-  const [fontWeight, setFontWeight] = useState("bold");
-  const [isItalic, setIsItalic] = useState(false);
-  const [textAlign, setTextAlign] = useState<"right" | "center" | "left">("right");
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [activeTool, setActiveTool] = useState<"signature" | "stamp" | null>(null);
 
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewImgRef = useRef<HTMLImageElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  const selectedItem = items.find((it) => it.id === selectedItemId);
 
   const getPdfJs = async (): Promise<any> => {
     if (typeof window === "undefined") return null;
@@ -179,25 +173,30 @@ export default function EditorPage() {
     }
   };
 
-  const addTextItem = () => {
-    if (!textInput.trim()) return;
-    setItems((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        type: "text",
-        content: textInput,
-        x: 60,
-        y: 60,
-        size: textSize,
-        color: textColor,
-        weight: fontWeight,
-        isItalic: isItalic,
-        align: textAlign,
-      },
-    ]);
-    setTextInput("");
-    setActiveTool(null);
+  // إضافة صندوق نصي حي ومباشر على الصفحة
+  const addNewTextDirectly = () => {
+    const newItem: CanvasItem = {
+      id: Date.now().toString(),
+      type: "text",
+      content: "اكتب النص هنا...",
+      x: 80,
+      y: 100,
+      size: 24,
+      color: "#000000",
+      weight: "bold",
+      isItalic: false,
+      align: "right",
+    };
+    setItems((prev) => [...prev, newItem]);
+    setSelectedItemId(newItem.id);
+  };
+
+  // تعديل خصائص النص المختار
+  const updateSelectedItem = (updates: Partial<CanvasItem>) => {
+    if (!selectedItemId) return;
+    setItems((prev) =>
+      prev.map((it) => (it.id === selectedItemId ? { ...it, ...updates } : it))
+    );
   };
 
   const handleStampUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -205,17 +204,16 @@ export default function EditorPage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      setItems((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          type: "image",
-          content: reader.result as string,
-          x: 60,
-          y: 60,
-          size: 140,
-        },
-      ]);
+      const newItem: CanvasItem = {
+        id: Date.now().toString(),
+        type: "image",
+        content: reader.result as string,
+        x: 80,
+        y: 100,
+        size: 140,
+      };
+      setItems((prev) => [...prev, newItem]);
+      setSelectedItemId(newItem.id);
       setActiveTool(null);
     };
     reader.readAsDataURL(file);
@@ -224,21 +222,20 @@ export default function EditorPage() {
   const saveSignature = () => {
     if (!sigCanvasRef.current) return;
     const dataUrl = sigCanvasRef.current.toDataURL("image/png");
-    setItems((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        type: "image",
-        content: dataUrl,
-        x: 60,
-        y: 80,
-        size: 160,
-      },
-    ]);
+    const newItem: CanvasItem = {
+      id: Date.now().toString(),
+      type: "image",
+      content: dataUrl,
+      x: 80,
+      y: 120,
+      size: 160,
+    };
+    setItems((prev) => [...prev, newItem]);
+    setSelectedItemId(newItem.id);
     setActiveTool(null);
   };
 
-  // دمج التعديلات مع مطابقة الإحداثيات والحجم 100% بين الشاشة والملف الأصلي
+  // دمج التعديلات بدقة مطابقة للأبعاد
   const renderComposedImage = async (): Promise<string> => {
     return new Promise((resolve) => {
       const bgImg = new Image();
@@ -252,10 +249,8 @@ export default function EditorPage() {
         offscreen.height = naturalH;
         const ctx = offscreen.getContext("2d")!;
 
-        // رسم خلفية الصفحة بدقتها الكاملة
         ctx.drawImage(bgImg, 0, 0);
 
-        // حساب نسبة التحجيم بين شاشة العرض والأبعاد الأصلية للمستند
         const displayW = previewImgRef.current?.clientWidth || naturalW;
         const displayH = previewImgRef.current?.clientHeight || naturalH;
         const scaleX = naturalW / displayW;
@@ -328,8 +323,6 @@ export default function EditorPage() {
       }
 
       const downloadLink = URL.createObjectURL(finalBlob);
-      setDownloadUrl(downloadLink);
-
       const a = document.createElement("a");
       a.href = downloadLink;
       a.download = `apdf_edited_${Date.now()}.pdf`;
@@ -338,9 +331,10 @@ export default function EditorPage() {
       document.body.removeChild(a);
 
       setActivePageImage(null);
+      setSelectedItemId(null);
     } catch (err) {
       console.error(err);
-      setStatusMsg("حدث خطأ أثناء معالجة المستند.");
+      setStatusMsg("حدث خطأ أثناء معالجة وحفظ المستند.");
     } finally {
       setProcessing(false);
     }
@@ -459,21 +453,9 @@ export default function EditorPage() {
         {/* 3. شاشة اختيار الصفحة للمستند المتعدد */}
         {mode === "multi" && !activePageImage && totalPages > 0 && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-950/70 border border-slate-800 p-5 rounded-2xl">
-              <div>
-                <h2 className="text-base font-bold text-white">صفحات المستند ({totalPages} صفحة)</h2>
-                <p className="text-xs text-slate-400">اضغط على رقم الصفحة التي ترغب بتوقيعها أو تعديلها:</p>
-              </div>
-
-              {downloadUrl && (
-                <a
-                  href={downloadUrl}
-                  download="apdf_edited_full.pdf"
-                  className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-5 py-3 rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-500/20"
-                >
-                  <Download className="w-4 h-4" /> تحميل المستند المكتمل كاملاً
-                </a>
-              )}
+            <div className="bg-slate-950/70 border border-slate-800 p-5 rounded-2xl">
+              <h2 className="text-base font-bold text-white">صفحات المستند ({totalPages} صفحة)</h2>
+              <p className="text-xs text-slate-400">اضغط على رقم الصفحة التي ترغب بتوقيعها أو تعديلها:</p>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
@@ -494,20 +476,18 @@ export default function EditorPage() {
           </div>
         )}
 
-        {/* 4. مساحة التعديل والكانفاس */}
+        {/* 4. مساحة التعديل والكانفاس مع الكتابة والمؤثرات الحية */}
         {activePageImage && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/80 border border-slate-800 p-4 rounded-2xl backdrop-blur-md">
-              <div className="flex items-center gap-2">
+          <div className="space-y-5">
+            {/* شريط الإجراءات الرئيسي والأدوات */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/90 border border-slate-800 p-4 rounded-2xl backdrop-blur-md">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* زر إضافة نص فوري */}
                 <button
-                  onClick={() => setActiveTool(activeTool === "text" ? null : "text")}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition ${
-                    activeTool === "text"
-                      ? "bg-purple-500 text-slate-950 border-purple-400"
-                      : "bg-slate-900 text-slate-300 border-slate-800 hover:border-purple-500/50"
-                  }`}
+                  onClick={addNewTextDirectly}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border bg-purple-600 hover:bg-purple-500 text-white transition shadow-lg shadow-purple-600/20"
                 >
-                  <Type className="w-4 h-4" /> كتابة نص
+                  <Plus className="w-4 h-4" /> إضافة نص على الصفحة
                 </button>
 
                 <button
@@ -527,6 +507,7 @@ export default function EditorPage() {
                 </label>
               </div>
 
+              {/* زر الحفظ النهائي */}
               <button
                 onClick={handleCommitEdit}
                 disabled={processing}
@@ -537,60 +518,58 @@ export default function EditorPage() {
               </button>
             </div>
 
-            {/* أدوات كتابة النص المتقدمة */}
-            {activeTool === "text" && (
-              <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-wrap items-center gap-3">
-                <input
-                  type="text"
-                  placeholder="اكتب النص هنا..."
-                  value={textInput}
-                  onChange={(e) => setTextInput(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white flex-1 min-w-[200px] focus:outline-none focus:border-purple-500"
-                />
+            {/* شريط المؤثرات والخصائص للنص المختار حالياً */}
+            {selectedItem && selectedItem.type === "text" && (
+              <div className="p-3 bg-slate-900/90 border border-purple-500/40 rounded-2xl flex flex-wrap items-center gap-3 animate-in fade-in duration-200">
+                <span className="text-xs font-bold text-purple-400 flex items-center gap-1">
+                  <Type className="w-3.5 h-3.5" /> تنسيق النص:
+                </span>
 
-                {/* اللون والحجم */}
+                {/* اللون */}
                 <input
                   type="color"
-                  value={textColor}
-                  onChange={(e) => setTextColor(e.target.value)}
-                  className="w-10 h-10 rounded-xl cursor-pointer bg-transparent border-0"
+                  value={selectedItem.color || "#000000"}
+                  onChange={(e) => updateSelectedItem({ color: e.target.value })}
+                  className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0"
                   title="لون الخط"
                 />
 
+                {/* الحجم */}
                 <select
-                  value={textSize}
-                  onChange={(e) => setTextSize(Number(e.target.value))}
-                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                  value={selectedItem.size}
+                  onChange={(e) => updateSelectedItem({ size: Number(e.target.value) })}
+                  className="bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white"
                   title="حجم الخط"
                 >
                   <option value={16}>16px</option>
                   <option value={20}>20px</option>
                   <option value={24}>24px</option>
-                  <option value={32}>32px</option>
-                  <option value={40}>40px</option>
-                  <option value={52}>52px</option>
+                  <option value={30}>30px</option>
+                  <option value={36}>36px</option>
+                  <option value={48}>48px</option>
+                  <option value={60}>60px</option>
                 </select>
 
                 {/* سمك الخط */}
                 <div className="flex border border-slate-700 rounded-xl overflow-hidden bg-slate-950">
                   <button
                     type="button"
-                    onClick={() => setFontWeight("normal")}
-                    className={`px-3 py-2 text-xs font-semibold ${fontWeight === "normal" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    onClick={() => updateSelectedItem({ weight: "normal" })}
+                    className={`px-2.5 py-1 text-xs font-semibold ${selectedItem.weight === "normal" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
                   >
                     عادي
                   </button>
                   <button
                     type="button"
-                    onClick={() => setFontWeight("bold")}
-                    className={`px-3 py-2 text-xs font-bold ${fontWeight === "bold" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    onClick={() => updateSelectedItem({ weight: "bold" })}
+                    className={`px-2.5 py-1 text-xs font-bold ${selectedItem.weight === "bold" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
                   >
-                    <Bold className="w-3.5 h-3.5" />
+                    <Bold className="w-3 h-3" />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setFontWeight("900")}
-                    className={`px-3 py-2 text-xs font-black ${fontWeight === "900" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    onClick={() => updateSelectedItem({ weight: "900" })}
+                    className={`px-2.5 py-1 text-xs font-black ${selectedItem.weight === "900" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
                   >
                     عريض+
                   </button>
@@ -599,46 +578,49 @@ export default function EditorPage() {
                 {/* مائل */}
                 <button
                   type="button"
-                  onClick={() => setIsItalic(!isItalic)}
-                  className={`p-2 border border-slate-700 rounded-xl ${isItalic ? "bg-purple-600 text-white" : "bg-slate-950 text-slate-400 hover:text-white"}`}
+                  onClick={() => updateSelectedItem({ isItalic: !selectedItem.isItalic })}
+                  className={`p-1.5 border border-slate-700 rounded-xl ${selectedItem.isItalic ? "bg-purple-600 text-white" : "bg-slate-950 text-slate-400 hover:text-white"}`}
                   title="مائل"
                 >
-                  <Italic className="w-4 h-4" />
+                  <Italic className="w-3.5 h-3.5" />
                 </button>
 
-                {/* محاذاة النص */}
+                {/* المحاذاة */}
                 <div className="flex border border-slate-700 rounded-xl overflow-hidden bg-slate-950">
                   <button
                     type="button"
-                    onClick={() => setTextAlign("right")}
-                    className={`p-2 ${textAlign === "right" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    onClick={() => updateSelectedItem({ align: "right" })}
+                    className={`p-1.5 ${selectedItem.align === "right" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
                     title="محاذاة لليمين"
                   >
-                    <AlignRight className="w-4 h-4" />
+                    <AlignRight className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setTextAlign("center")}
-                    className={`p-2 ${textAlign === "center" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    onClick={() => updateSelectedItem({ align: "center" })}
+                    className={`p-1.5 ${selectedItem.align === "center" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
                     title="توسيط"
                   >
-                    <AlignCenter className="w-4 h-4" />
+                    <AlignCenter className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setTextAlign("left")}
-                    className={`p-2 ${textAlign === "left" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    onClick={() => updateSelectedItem({ align: "left" })}
+                    className={`p-1.5 ${selectedItem.align === "left" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
                     title="محاذاة لليسار"
                   >
-                    <AlignLeft className="w-4 h-4" />
+                    <AlignLeft className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
                 <button
-                  onClick={addTextItem}
-                  className="bg-purple-500 hover:bg-purple-600 text-slate-950 px-5 py-2 rounded-xl text-xs font-bold"
+                  onClick={() => {
+                    setItems((prev) => prev.filter((i) => i.id !== selectedItem.id));
+                    setSelectedItemId(null);
+                  }}
+                  className="mr-auto text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 bg-rose-500/10 px-2.5 py-1.5 rounded-xl border border-rose-500/20"
                 >
-                  إدراج
+                  <Trash2 className="w-3.5 h-3.5" /> حذف النص
                 </button>
               </div>
             )}
@@ -691,105 +673,135 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* مساحة الكانفاس الحرة والعناصر القابلة للتحريك بدقة */}
-            <div className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-4">
-              <div className="relative inline-block select-none shadow-2xl">
+            {/* مساحة الكانفاس والكتابة الحية المباشرة */}
+            <div
+              onClick={() => setSelectedItemId(null)}
+              className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-4 min-h-[500px]"
+            >
+              <div
+                className="relative inline-block select-none shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <img
                   ref={previewImgRef}
                   src={activePageImage}
                   alt="الصفحة للتعديل"
-                  className="max-w-full max-h-[75vh] block rounded-lg"
+                  className="max-w-full max-h-[75vh] block rounded-lg pointer-events-none"
                 />
 
-                {items.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{ left: item.x, top: item.y }}
-                    className="absolute border border-dashed border-purple-400 hover:border-emerald-400 bg-transparent p-1 rounded group select-none cursor-move"
-                    onMouseDown={(e) => {
-                      const startX = e.clientX - item.x;
-                      const startY = e.clientY - item.y;
-
-                      const onMove = (moveEv: MouseEvent) => {
-                        setItems((prev) =>
-                          prev.map((it) =>
-                            it.id === item.id
-                              ? { ...it, x: moveEv.clientX - startX, y: moveEv.clientY - startY }
-                              : it
-                          )
-                        );
-                      };
-
-                      const onUp = () => {
-                        window.removeEventListener("mousemove", onMove);
-                        window.removeEventListener("mouseup", onUp);
-                      };
-
-                      window.addEventListener("mousemove", onMove);
-                      window.addEventListener("mouseup", onUp);
-                    }}
-                  >
-                    {item.type === "text" ? (
-                      <span
-                        style={{
-                          fontSize: `${item.size}px`,
-                          color: item.color,
-                          fontWeight: item.weight || "bold",
-                          fontStyle: item.isItalic ? "italic" : "normal",
-                          textAlign: item.align || "right",
-                        }}
-                        className="block leading-tight pointer-events-none select-none whitespace-pre"
-                      >
-                        {item.content}
-                      </span>
-                    ) : (
-                      <img
-                        src={item.content}
-                        alt="عنصر"
-                        style={{ width: `${item.size}px` }}
-                        className="pointer-events-none block"
-                      />
-                    )}
-
-                    {/* مقبض تغيير الحجم بالسحب */}
+                {items.map((item) => {
+                  const isSelected = selectedItemId === item.id;
+                  return (
                     <div
-                      className="absolute -bottom-2 -left-2 w-4 h-4 bg-purple-400 hover:bg-white rounded-full border border-black cursor-nwse-resize shadow"
-                      title="اسحب لتغيير الحجم"
-                      onMouseDown={(e) => {
+                      key={item.id}
+                      style={{ left: item.x, top: item.y }}
+                      onClick={(e) => {
                         e.stopPropagation();
-                        const startX = e.clientX;
-                        const initialSize = item.size;
+                        setSelectedItemId(item.id);
+                      }}
+                      className={`absolute bg-transparent rounded select-none cursor-move transition-all ${
+                        isSelected
+                          ? "border-2 border-purple-400 shadow-md ring-2 ring-purple-500/20"
+                          : "border border-dashed border-slate-500/40 hover:border-purple-400"
+                      }`}
+                      onMouseDown={(e) => {
+                        // لا نبدأ السحب إذا كان المستخدم يكتب داخل حقل النص
+                        if ((e.target as HTMLElement).tagName === "INPUT") return;
+                        setSelectedItemId(item.id);
+                        const startX = e.clientX - item.x;
+                        const startY = e.clientY - item.y;
 
-                        const onResize = (moveEv: MouseEvent) => {
-                          const delta = startX - moveEv.clientX;
-                          const newSize = Math.max(14, Math.min(600, initialSize + delta));
+                        const onMove = (moveEv: MouseEvent) => {
                           setItems((prev) =>
-                            prev.map((it) => (it.id === item.id ? { ...it, size: newSize } : it))
+                            prev.map((it) =>
+                              it.id === item.id
+                                ? { ...it, x: moveEv.clientX - startX, y: moveEv.clientY - startY }
+                                : it
+                            )
                           );
                         };
 
-                        const onResizeEnd = () => {
-                          window.removeEventListener("mousemove", onResize);
-                          window.removeEventListener("mouseup", onResizeEnd);
+                        const onUp = () => {
+                          window.removeEventListener("mousemove", onMove);
+                          window.removeEventListener("mouseup", onUp);
                         };
 
-                        window.addEventListener("mousemove", onResize);
-                        window.addEventListener("mouseup", onResizeEnd);
+                        window.addEventListener("mousemove", onMove);
+                        window.addEventListener("mouseup", onUp);
                       }}
-                    />
-
-                    {/* زر الحذف */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setItems((prev) => prev.filter((i) => i.id !== item.id));
-                      }}
-                      className="absolute -top-3 -right-3 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
                     >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
+                      {/* صندوق كتابة حي ومباشر على الصفحة */}
+                      {item.type === "text" ? (
+                        <input
+                          type="text"
+                          value={item.content}
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((it) =>
+                                it.id === item.id ? { ...it, content: e.target.value } : it
+                              )
+                            )
+                          }
+                          style={{
+                            fontSize: `${item.size}px`,
+                            color: item.color,
+                            fontWeight: item.weight || "bold",
+                            fontStyle: item.isItalic ? "italic" : "normal",
+                            textAlign: item.align || "right",
+                            width: `${Math.max(140, item.content.length * (item.size * 0.75))}px`,
+                          }}
+                          className="bg-transparent border-0 outline-none leading-tight px-1 cursor-text"
+                        />
+                      ) : (
+                        <img
+                          src={item.content}
+                          alt="عنصر"
+                          style={{ width: `${item.size}px` }}
+                          className="pointer-events-none block"
+                        />
+                      )}
+
+                      {/* مقبض تغيير الحجم بالسحب */}
+                      <div
+                        className="absolute -bottom-2 -left-2 w-4 h-4 bg-purple-400 hover:bg-white rounded-full border border-black cursor-nwse-resize shadow"
+                        title="اسحب لتغيير الحجم"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          const startX = e.clientX;
+                          const initialSize = item.size;
+
+                          const onResize = (moveEv: MouseEvent) => {
+                            const delta = startX - moveEv.clientX;
+                            const newSize = Math.max(14, Math.min(600, initialSize + delta));
+                            setItems((prev) =>
+                              prev.map((it) => (it.id === item.id ? { ...it, size: newSize } : it))
+                            );
+                          };
+
+                          const onResizeEnd = () => {
+                            window.removeEventListener("mousemove", onResize);
+                            window.removeEventListener("mouseup", onResizeEnd);
+                          };
+
+                          window.addEventListener("mousemove", onResize);
+                          window.addEventListener("mouseup", onResizeEnd);
+                        }}
+                      />
+
+                      {/* زر الحذف السريع */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setItems((prev) => prev.filter((i) => i.id !== item.id));
+                          if (selectedItemId === item.id) setSelectedItemId(null);
+                        }}
+                        className="absolute -top-3 -right-3 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition shadow"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

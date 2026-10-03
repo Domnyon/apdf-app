@@ -68,10 +68,10 @@ export default function EditorPage() {
             "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
           resolve(lib);
         } else {
-          reject(new Error("PDF engine load failed"));
+          reject(new Error("تعذر تحميل محرك العرض"));
         }
       };
-      script.onerror = () => reject(new Error("Script network error"));
+      script.onerror = () => reject(new Error("فشل الاتصال بسكربت العرض"));
       document.head.appendChild(script);
     });
   };
@@ -178,7 +178,7 @@ export default function EditorPage() {
     const newItem: CanvasItem = {
       id: Date.now().toString(),
       type: "text",
-      content: "اكتب النص هنا...",
+      content: "",
       percentX,
       percentY,
       sizePx: 22,
@@ -259,6 +259,7 @@ export default function EditorPage() {
           const exactSize = itm.sizePx * scaleMultiplier;
 
           if (itm.type === "text") {
+            if (!itm.content.trim()) continue;
             const fontStyle = itm.isItalic ? "italic" : "normal";
             const fontWeightVal = itm.weight || "bold";
             ctx.font = `${fontStyle} ${fontWeightVal} ${exactSize}px 'Cairo', sans-serif`;
@@ -446,7 +447,7 @@ export default function EditorPage() {
           </div>
         )}
 
-        {/* شبكة صفحات المستند المتعدد */}
+        {/* شبكة الصفحات للمستند المتعدد */}
         {mode === "multi" && !activePageImage && totalPages > 0 && (
           <div className="space-y-6">
             <div className="bg-slate-950/70 border border-slate-800 p-5 rounded-2xl">
@@ -524,7 +525,7 @@ export default function EditorPage() {
             {activeTool === "text_placement" && (
               <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between text-xs text-amber-300 font-bold">
                 <span className="flex items-center gap-2">
-                  <MousePointerClick className="w-4 h-4" /> انقر بالفأرة على أي مكان فوق المستند لإنشاء مربع النص هناك بالضبط.
+                  <MousePointerClick className="w-4 h-4" /> انقر بالفأرة على أي مكان فوق المستند في الأسفل ليظهر مربع الكتابة بالحدود السوداء هناك فوراً.
                 </span>
                 <button
                   onClick={() => setActiveTool(null)}
@@ -535,11 +536,11 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* شريط تنسيق النص المختار */}
+            {/* شريط المؤثرات للنص المختار */}
             {selectedItem && selectedItem.type === "text" && (
               <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-2xl flex flex-wrap items-center gap-3">
                 <span className="text-xs font-bold text-purple-400 flex items-center gap-1">
-                  <Type className="w-3.5 h-3.5" /> تنسيق النص:
+                  <Type className="w-3.5 h-3.5" /> تنسيق النص المختار:
                 </span>
 
                 <input
@@ -657,7 +658,7 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* مساحة الكانفاس التفاعلية */}
+            {/* مساحة المستند وعرض المربع المؤقت ذو الحدود السوداء */}
             <div
               onClick={() => setSelectedItemId(null)}
               className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-4 min-h-[500px]"
@@ -676,64 +677,76 @@ export default function EditorPage() {
                   className="max-w-full max-h-[75vh] block rounded-lg pointer-events-none"
                 />
 
-                {items.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      left: `${item.percentX * 100}%`,
-                      top: `${item.percentY * 100}%`,
-                      position: "absolute",
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedItemId(item.id);
-                    }}
-                    className="bg-transparent rounded select-none group"
-                  >
-                    {item.type === "text" ? (
-                      <input
-                        type="text"
-                        autoFocus
-                        value={item.content}
-                        onChange={(e) =>
-                          setItems((prev) =>
-                            prev.map((it) =>
-                              it.id === item.id ? { ...it, content: e.target.value } : it
-                            )
-                          )
-                        }
-                        style={{
-                          fontSize: `${item.sizePx}px`,
-                          color: item.color,
-                          fontWeight: item.weight || "bold",
-                          fontStyle: item.isItalic ? "italic" : "normal",
-                          direction: "rtl",
-                          width: `${Math.max(120, item.content.length * (item.sizePx * 0.72))}px`,
-                        }}
-                        className="bg-transparent border-0 outline-none p-0 m-0 leading-none cursor-text shadow-none text-right"
-                      />
-                    ) : (
-                      <img
-                        src={item.content}
-                        alt="عنصر"
-                        style={{ width: `${item.sizePx}px` }}
-                        className="pointer-events-none block"
-                      />
-                    )}
-
-                    {/* زر الحذف السريع */}
-                    <button
+                {items.map((item) => {
+                  const isSelected = selectedItemId === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        left: `${item.percentX * 100}%`,
+                        top: `${item.percentY * 100}%`,
+                        position: "absolute",
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setItems((prev) => prev.filter((i) => i.id !== item.id));
-                        if (selectedItemId === item.id) setSelectedItemId(null);
+                        setSelectedItemId(item.id);
                       }}
-                      className="absolute -top-3 -right-3 w-4 h-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
+                      // مربع بحدود سوداء موقتة يثبت في مكانه أثناء التعديل
+                      className={`select-none transition-all ${
+                        item.type === "text"
+                          ? isSelected
+                            ? "border-2 border-dashed border-slate-900 bg-white/70 shadow-md p-1 rounded"
+                            : "border border-dashed border-slate-400/50 bg-transparent p-1 rounded"
+                          : "bg-transparent"
+                      }`}
                     >
-                      <Trash2 className="w-2.5 h-2.5" />
-                    </button>
-                  </div>
-                ))}
+                      {item.type === "text" ? (
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="اكتب هنا..."
+                          value={item.content}
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((it) =>
+                                it.id === item.id ? { ...it, content: e.target.value } : it
+                              )
+                            )
+                          }
+                          style={{
+                            fontSize: `${item.sizePx}px`,
+                            color: item.color,
+                            fontWeight: item.weight || "bold",
+                            fontStyle: item.isItalic ? "italic" : "normal",
+                            direction: "rtl",
+                            width: `${Math.max(130, (item.content || "اكتب هنا...").length * (item.sizePx * 0.72))}px`,
+                          }}
+                          className="bg-transparent border-0 outline-none p-0 m-0 leading-none cursor-text shadow-none text-right"
+                        />
+                      ) : (
+                        <img
+                          src={item.content}
+                          alt="عنصر"
+                          style={{ width: `${item.sizePx}px` }}
+                          className="pointer-events-none block"
+                        />
+                      )}
+
+                      {/* زر الحذف */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setItems((prev) => prev.filter((i) => i.id !== item.id));
+                          if (selectedItemId === item.id) setSelectedItemId(null);
+                        }}
+                        className="absolute -top-3 -right-3 w-4 h-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center opacity-80 hover:opacity-100 transition shadow"
+                        title="حذف"
+                      >
+                        <Trash2 className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

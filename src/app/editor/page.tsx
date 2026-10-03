@@ -668,7 +668,7 @@ export default function EditorPage() {
 
                       const onMove = (moveEv: MouseEvent) => {
                         const deltaX = moveEv.clientX - startMouseX;
-                        const deltaY = moveEv.clientY - startY;
+                        const deltaY = moveEv.clientY - startMouseY;
 
                         const newPercentX = Math.max(0, Math.min(0.95, initialPercentX + deltaX / rect.width));
                         const newPercentY = Math.max(0, Math.min(0.95, initialPercentY + deltaY / rect.height));

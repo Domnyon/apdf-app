@@ -17,6 +17,7 @@ import {
   Trash2,
   Loader2,
   X,
+  Bold,
 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 
@@ -28,6 +29,7 @@ interface CanvasItem {
   percentY: number;
   color?: string;
   sizePx: number;
+  isBold?: boolean;
 }
 
 export default function EditorPage() {
@@ -44,6 +46,7 @@ export default function EditorPage() {
   const [showTextInputModal, setShowTextInputModal] = useState(false);
   const [rawText, setRawText] = useState("");
   const [selectedColor, setSelectedColor] = useState("#000000");
+  const [isBoldText, setIsBoldText] = useState(true);
 
   const [activeTool, setActiveTool] = useState<"signature" | "stamp" | null>(null);
   const previewWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -52,6 +55,8 @@ export default function EditorPage() {
 
   const [processing, setProcessing] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  const selectedItem = items.find((it) => it.id === selectedItemId);
 
   const getPdfJs = async (): Promise<any> => {
     if (typeof window === "undefined") return null;
@@ -164,7 +169,7 @@ export default function EditorPage() {
     }
   };
 
-  // تأكيد إدراج النص بعد كتابته واختيار لونه
+  // إدراج النص الجديد
   const handleConfirmTextInsert = () => {
     if (!rawText.trim()) return;
 
@@ -174,8 +179,9 @@ export default function EditorPage() {
       content: rawText,
       percentX: 0.3,
       percentY: 0.4,
-      sizePx: 22,
+      sizePx: 26,
       color: selectedColor,
+      isBold: isBoldText,
     };
 
     setItems((prev) => [...prev, newItem]);
@@ -245,7 +251,8 @@ export default function EditorPage() {
           const exactSize = itm.sizePx * scaleMultiplier;
 
           if (itm.type === "text") {
-            ctx.font = `bold ${exactSize}px 'Cairo', sans-serif`;
+            const fontWeightStr = itm.isBold ? "900" : "normal";
+            ctx.font = `${fontWeightStr} ${exactSize}px 'Cairo', sans-serif`;
             ctx.fillStyle = itm.color || "#000000";
             ctx.textBaseline = "top";
             ctx.textAlign = "left";
@@ -356,6 +363,38 @@ export default function EditorPage() {
     const onTouchMove = (touchEv: TouchEvent) => {
       if (touchEv.touches.length > 0) {
         moveHandler(touchEv.touches[0].clientX, touchEv.touches[0].clientY);
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", cleanup);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", cleanup);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", cleanup);
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", cleanup);
+  };
+
+  // تكبير/تصغير حجم العنصر باللمس أو الماوس عبر المقبض الدائري
+  const handleStartResize = (clientX: number, itemId: string, initialSize: number) => {
+    const startX = clientX;
+
+    const resizeHandler = (currX: number) => {
+      const deltaX = currX - startX;
+      const newSize = Math.max(14, Math.min(120, initialSize + deltaX));
+      setItems((prev) =>
+        prev.map((it) => (it.id === itemId ? { ...it, sizePx: newSize } : it))
+      );
+    };
+
+    const onMouseMove = (moveEv: MouseEvent) => resizeHandler(moveEv.clientX);
+    const onTouchMove = (touchEv: TouchEvent) => {
+      if (touchEv.touches.length > 0) {
+        resizeHandler(touchEv.touches[0].clientX);
       }
     };
 
@@ -507,7 +546,6 @@ export default function EditorPage() {
             {/* شريط الإجراءات العلوي السريع */}
             <div className="flex items-center justify-between gap-2 bg-slate-950/90 border border-slate-800 p-2.5 rounded-2xl backdrop-blur-md">
               <div className="flex items-center gap-1.5">
-                {/* زر كتابة نص فوري */}
                 <button
                   onClick={() => setShowTextInputModal(true)}
                   className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 bg-purple-600 hover:bg-purple-500 text-white shadow-md transition"
@@ -542,13 +580,69 @@ export default function EditorPage() {
               </button>
             </div>
 
-            {/* نافذة الجوال المنبثقة لكتابة النص واختيار لونه */}
+            {/* شريط تحكم سريع بالعنصر المختار (الحجم التتش والسمك واللون المباشر) */}
+            {selectedItem && (
+              <div className="p-2.5 bg-slate-900/95 border border-purple-500/30 rounded-xl flex items-center justify-between gap-2 text-xs">
+                {selectedItem.type === "text" && (
+                  <div className="flex items-center gap-3 w-full">
+                    <span className="text-[11px] text-purple-400 font-bold whitespace-nowrap">حجم الخط:</span>
+                    <input
+                      type="range"
+                      min={14}
+                      max={72}
+                      value={selectedItem.sizePx}
+                      onChange={(e) => {
+                        const newSz = Number(e.target.value);
+                        setItems((prev) =>
+                          prev.map((it) => (it.id === selectedItem.id ? { ...it, sizePx: newSz } : it))
+                        );
+                      }}
+                      className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    />
+                    <span className="text-[11px] font-bold text-slate-300 w-8">{selectedItem.sizePx}px</span>
+
+                    {/* زر تبديل السمك السريع */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setItems((prev) =>
+                          prev.map((it) =>
+                            it.id === selectedItem.id ? { ...it, isBold: !it.isBold } : it
+                          )
+                        );
+                      }}
+                      className={`p-1.5 rounded-lg border text-xs font-bold transition ${
+                        selectedItem.isBold
+                          ? "bg-purple-600 text-white border-purple-500"
+                          : "bg-slate-800 text-slate-400 border-slate-700"
+                      }`}
+                      title="سميك"
+                    >
+                      <Bold className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    setItems((prev) => prev.filter((i) => i.id !== selectedItem.id));
+                    setSelectedItemId(null);
+                  }}
+                  className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition"
+                  title="حذف"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* نافذة الجوال المنبثقة: كتابة النص واختيار اللون والسمك */}
             {showTextInputModal && (
-              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
                 <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-5 space-y-4 shadow-2xl">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                     <span className="text-sm font-bold text-white flex items-center gap-1.5">
-                      <Type className="w-4 h-4 text-purple-400" /> اكتب النص المطلوب:
+                      <Type className="w-4 h-4 text-purple-400" /> إضافة نص جديد
                     </span>
                     <button
                       onClick={() => setShowTextInputModal(false)}
@@ -561,40 +655,58 @@ export default function EditorPage() {
                   <input
                     type="text"
                     autoFocus
-                    placeholder="اكتب اسمك، ملاحظة، أو تاريخ..."
+                    placeholder="اكتب النص هنا..."
                     value={rawText}
                     onChange={(e) => setRawText(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 text-right"
                   />
 
-                  {/* اختيار اللون السريع بلمسة واحدة */}
-                  <div className="space-y-1.5">
-                    <span className="text-[11px] font-bold text-slate-400">لون الكتابة:</span>
-                    <div className="flex items-center gap-2">
-                      {[
-                        { color: "#000000", label: "أسود" },
-                        { color: "#1e40af", label: "أزرق" },
-                        { color: "#b91c1c", label: "أحمر" },
-                        { color: "#ffffff", label: "أبيض" },
-                      ].map((c) => (
-                        <button
-                          key={c.color}
-                          type="button"
-                          onClick={() => setSelectedColor(c.color)}
-                          style={{ backgroundColor: c.color }}
-                          className={`w-8 h-8 rounded-full border-2 transition ${
-                            selectedColor === c.color ? "border-purple-400 scale-110 shadow-md" : "border-slate-600"
-                          }`}
-                          title={c.label}
+                  {/* اختيار اللون وخيار سميك بجانبه */}
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-bold text-slate-400">اللون:</span>
+                      <div className="flex items-center gap-2">
+                        {[
+                          { color: "#000000", label: "أسود" },
+                          { color: "#1e40af", label: "أزرق" },
+                          { color: "#b91c1c", label: "أحمر" },
+                          { color: "#ffffff", label: "أبيض" },
+                        ].map((c) => (
+                          <button
+                            key={c.color}
+                            type="button"
+                            onClick={() => setSelectedColor(c.color)}
+                            style={{ backgroundColor: c.color }}
+                            className={`w-7 h-7 rounded-full border-2 transition ${
+                              selectedColor === c.color ? "border-purple-400 scale-110 shadow-md" : "border-slate-600"
+                            }`}
+                            title={c.label}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          value={selectedColor}
+                          onChange={(e) => setSelectedColor(e.target.value)}
+                          className="w-7 h-7 rounded-full cursor-pointer bg-transparent border-0"
+                          title="لون مخصص"
                         />
-                      ))}
-                      <input
-                        type="color"
-                        value={selectedColor}
-                        onChange={(e) => setSelectedColor(e.target.value)}
-                        className="w-8 h-8 rounded-full cursor-pointer bg-transparent border-0"
-                        title="لون مخصص"
-                      />
+                      </div>
+                    </div>
+
+                    {/* خيار خط سميك بجانب اللون مباشرة */}
+                    <div className="space-y-1 flex flex-col items-center">
+                      <span className="text-[11px] font-bold text-slate-400">السمك:</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsBoldText(!isBoldText)}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-bold transition ${
+                          isBoldText
+                            ? "bg-purple-600 text-white border-purple-500"
+                            : "bg-slate-950 text-slate-400 border-slate-700"
+                        }`}
+                      >
+                        <Bold className="w-3.5 h-3.5" /> سميك
+                      </button>
                     </div>
                   </div>
 
@@ -683,7 +795,7 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* مساحة المستند بنظام التتش والتحريك باللمس الحر بدون حدود */}
+            {/* مساحة المستند بنظام التتش والتحكم الحر بالحجم */}
             <div
               onClick={() => setSelectedItemId(null)}
               className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-2 min-h-[450px]"
@@ -710,13 +822,15 @@ export default function EditorPage() {
                         position: "absolute",
                         touchAction: "none",
                       }}
-                      className="cursor-move select-none active:scale-105 transition-transform"
+                      className={`cursor-move select-none p-1 transition-all ${
+                        isSelected ? "border border-purple-400/80 rounded" : ""
+                      }`}
                       // السحب بالماوس
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         handleStartMove(e.clientX, e.clientY, item.id, item.percentX, item.percentY);
                       }}
-                      // السحب باللمس على الجوال
+                      // السحب باللمس
                       onTouchStart={(e) => {
                         e.stopPropagation();
                         if (e.touches.length > 0) {
@@ -735,8 +849,9 @@ export default function EditorPage() {
                           style={{
                             fontSize: `${item.sizePx}px`,
                             color: item.color || "#000000",
+                            fontWeight: item.isBold ? 900 : 400,
                           }}
-                          className="font-black whitespace-nowrap block leading-tight px-1 drop-shadow-sm select-none"
+                          className="whitespace-nowrap block leading-tight px-1 drop-shadow-sm select-none"
                         >
                           {item.content}
                         </span>
@@ -749,16 +864,25 @@ export default function EditorPage() {
                         />
                       )}
 
-                      {/* زر الحذف السريع بلمسة واحدة */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setItems((prev) => prev.filter((i) => i.id !== item.id));
-                        }}
-                        className="absolute -top-3 -right-3 w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center shadow"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      {/* مقبض تتش لتغيير الحجم بالسحب المباشر عند اختيار العنصر */}
+                      {isSelected && (
+                        <div
+                          className="absolute -bottom-2 -left-2 w-5 h-5 bg-purple-500 hover:bg-white rounded-full border-2 border-slate-900 cursor-ew-resize shadow-md flex items-center justify-center touch-none"
+                          title="اسحب لتكبير/تصغير الحجم"
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            handleStartResize(e.clientX, item.id, item.sizePx);
+                          }}
+                          onTouchStart={(e) => {
+                            e.stopPropagation();
+                            if (e.touches.length > 0) {
+                              handleStartResize(e.touches[0].clientX, item.id, item.sizePx);
+                            }
+                          }}
+                        >
+                          <span className="w-1.5 h-1.5 bg-white rounded-full pointer-events-none" />
+                        </div>
+                      )}
                     </div>
                   );
                 })}

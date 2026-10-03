@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import Link from "next/link";
 import {
   FileSignature,
@@ -15,9 +15,7 @@ import {
   RotateCcw,
   Check,
   Sparkles,
-  Move,
   Trash2,
-  CheckCircle2,
 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 
@@ -32,36 +30,29 @@ interface CanvasItem {
 }
 
 export default function EditorPage() {
-  // حالة المسار المختار: null (لم يختر) | 'single' | 'multi'
   const [mode, setMode] = useState<"single" | "multi" | null>(null);
 
-  // ملفات الـ PDF والصور
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [pdfDocProxy, setPdfDocProxy] = useState<any>(null);
   const [pageThumbnails, setPageThumbnails] = useState<string[]>([]);
   const [selectedPageIndex, setSelectedPageIndex] = useState<number | null>(null);
 
-  // صورة الصفحة الجاري تعديلها في الـ Canvas
   const [activePageImage, setActivePageImage] = useState<string | null>(null);
 
-  // عناصر التعديل (نصوص، توقيعات، أختام)
   const [items, setItems] = useState<CanvasItem[]>([]);
   const [activeTool, setActiveTool] = useState<"text" | "signature" | "stamp" | null>(null);
 
-  // مدخلات الأدوات
   const [textInput, setTextInput] = useState("");
   const [textColor, setTextColor] = useState("#ffffff");
   const [textSize, setTextSize] = useState(24);
 
-  // توقيع بالرسم
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
-  // النتيجة النهائية للتحميل
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
 
-  // تحميل مكتبة pdfjs-dist ديناميكياً في المتصفح لعرض الصفحات كصور
+  // تحميل صفحات الـ PDF كصور مصغرة
   const loadPdfThumbnails = async (file: File) => {
     setProcessing(true);
     try {
@@ -92,13 +83,13 @@ export default function EditorPage() {
     }
   };
 
-  // اختيار صفحة من الملف المتعدد لتعديلها
+  // فتح صفحة محددة داخل الكانفاس
   const openPageInEditor = async (pageIdx: number) => {
     setSelectedPageIndex(pageIdx);
     setProcessing(true);
     try {
       const page = await pdfDocProxy.getPage(pageIdx + 1);
-      const viewport = page.getViewport({ scale: 1.5 }); // دقة أعلى للمحرر
+      const viewport = page.getViewport({ scale: 1.5 });
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
       canvas.width = viewport.width;
@@ -114,7 +105,7 @@ export default function EditorPage() {
     }
   };
 
-  // رفع ملف صفحة واحدة أو صورة
+  // رفع صفحة واحدة أو صورة
   const handleSingleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -142,7 +133,7 @@ export default function EditorPage() {
     loadPdfThumbnails(file);
   };
 
-  // إضافة نص للكانفاس
+  // إضافة نص
   const addTextItem = () => {
     if (!textInput.trim()) return;
     setItems((prev) => [
@@ -151,7 +142,7 @@ export default function EditorPage() {
         id: Date.now().toString(),
         type: "text",
         content: textInput,
-        x: 50,
+        x: 60,
         y: 80,
         size: textSize,
         color: textColor,
@@ -161,7 +152,7 @@ export default function EditorPage() {
     setActiveTool(null);
   };
 
-  // رفع صورة ختم وإضافتها
+  // رفع ختم أو صورة
   const handleStampUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -201,7 +192,7 @@ export default function EditorPage() {
     setActiveTool(null);
   };
 
-  // دمج التعديلات وإخراج صورة الصفحة المعدلة
+  // دمج التعديلات وتوليد الصورة النهائية
   const renderComposedImage = async (): Promise<string> => {
     return new Promise((resolve) => {
       const bgImg = new Image();
@@ -212,14 +203,12 @@ export default function EditorPage() {
         offscreen.height = bgImg.height;
         const ctx = offscreen.getContext("2d")!;
 
-        // رسم الصفحة الأصلية
         ctx.drawImage(bgImg, 0, 0);
 
-        // رسم العناصر المضافة
         for (const itm of items) {
           if (itm.type === "text") {
             ctx.font = `${itm.size}px Cairo, sans-serif`;
-            ctx.fillStyle = itm.color || "#000000";
+            ctx.fillStyle = itm.color || "#ffffff";
             ctx.fillText(itm.content, itm.x, itm.y);
           } else if (itm.type === "image") {
             const img = new Image();
@@ -237,13 +226,12 @@ export default function EditorPage() {
     });
   };
 
-  // اعتماد التعديل واستبدال الصفحة داخل الـ PDF وحفظه
+  // اعتماد التعديل واستبدال الصفحة
   const handleCommitEdit = async () => {
     setProcessing(true);
     try {
       const editedDataUrl = await renderComposedImage();
 
-      // إذا كان مسار صفحة واحدة مباشرة
       if (mode === "single" || !originalFile) {
         const newPdf = await PDFDocument.create();
         const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
@@ -258,7 +246,6 @@ export default function EditorPage() {
         return;
       }
 
-      // إذا كان مستنداً متعدداً: استبدال الصفحة المحددة بدقة
       const originalBytes = await originalFile.arrayBuffer();
       const pdfDoc = await PDFDocument.load(originalBytes);
       const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
@@ -276,7 +263,6 @@ export default function EditorPage() {
       const blob = new Blob([updatedBytes as unknown as BlobPart], { type: "application/pdf" });
       setDownloadUrl(URL.createObjectURL(blob));
 
-      // تحديث صورة الصفحة في قائمة الصفحات والعودة لها
       const updatedThumbs = [...pageThumbnails];
       updatedThumbs[targetIdx] = editedDataUrl;
       setPageThumbnails(updatedThumbs);
@@ -289,8 +275,7 @@ export default function EditorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#070b12] text-slate-100 font-sans selection:bg-emerald-500 selection:text-black relative" dir="rtl">
-      {/* توهج الخلفية */}
+    <div className="min-h-screen bg-[#070b12] text-slate-100 font-sans selection:bg-purple-500 selection:text-white relative" dir="rtl">
       <div className="absolute top-0 right-1/4 w-[500px] h-[350px] bg-purple-600/10 blur-[130px] rounded-full pointer-events-none" />
 
       {/* الهيدر العلوي */}
@@ -312,7 +297,7 @@ export default function EditorPage() {
       </header>
 
       <main className="relative z-20 max-w-5xl mx-auto px-4 py-8">
-        {/* المرحلة 1: شاشة اختيار المسار (صفحة واحدة أو متعدد الصفحات) */}
+        {/* اختيار المسار */}
         {!mode && (
           <div className="max-w-2xl mx-auto text-center space-y-8 pt-8">
             <div className="space-y-3">
@@ -328,7 +313,6 @@ export default function EditorPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-right">
-              {/* خيار صفحة واحدة */}
               <button
                 onClick={() => setMode("single")}
                 className="p-6 rounded-[24px] bg-slate-950/80 border border-slate-800 hover:border-purple-500/60 transition group hover:shadow-[0_0_30px_rgba(168,85,247,0.15)] flex flex-col justify-between h-[200px]"
@@ -344,7 +328,6 @@ export default function EditorPage() {
                 </div>
               </button>
 
-              {/* خيار متعدد الصفحات */}
               <button
                 onClick={() => setMode("multi")}
                 className="p-6 rounded-[24px] bg-slate-950/80 border border-slate-800 hover:border-emerald-500/60 transition group hover:shadow-[0_0_30px_rgba(16,185,129,0.15)] flex flex-col justify-between h-[200px]"
@@ -363,7 +346,7 @@ export default function EditorPage() {
           </div>
         )}
 
-        {/* المرحلة 2: رفع الملف بناءً على الخيار المختار */}
+        {/* رفع الملف */}
         {mode && !activePageImage && pageThumbnails.length === 0 && (
           <div className="max-w-xl mx-auto space-y-6 pt-6">
             <button
@@ -391,7 +374,7 @@ export default function EditorPage() {
           </div>
         )}
 
-        {/* المرحلة 3: شبكة عرض الصفحات للمستند المتعدد */}
+        {/* شبكة عرض الصفحات */}
         {mode === "multi" && !activePageImage && pageThumbnails.length > 0 && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-950/70 border border-slate-800 p-5 rounded-2xl">
@@ -431,10 +414,9 @@ export default function EditorPage() {
           </div>
         )}
 
-        {/* المرحلة 4: مساحة المحرر التفاعلي (الكانفاس) */}
+        {/* المحرر التفاعلي */}
         {activePageImage && (
           <div className="space-y-6">
-            {/* شريط أدوات التعديل العلوي */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/80 border border-slate-800 p-4 rounded-2xl backdrop-blur-md">
               <div className="flex items-center gap-2">
                 <button
@@ -465,7 +447,6 @@ export default function EditorPage() {
                 </label>
               </div>
 
-              {/* زر اعتماد التعديل واستبدال الصفحة */}
               <button
                 onClick={handleCommitEdit}
                 disabled={processing}
@@ -476,7 +457,7 @@ export default function EditorPage() {
               </button>
             </div>
 
-            {/* نافذة كتابة النص */}
+            {/* أدوات النص */}
             {activeTool === "text" && (
               <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-wrap items-center gap-3">
                 <input
@@ -512,7 +493,7 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* لوحة رسم التوقيع بالماوس أو اللمس */}
+            {/* لوحة رسم التوقيع */}
             {activeTool === "signature" && (
               <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
                 <span className="text-xs font-bold text-slate-300">ارسم توقيعك في المساحة أدناه:</span>
@@ -560,20 +541,20 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* مساحة عرض الصفحة وتوزيع العناصر بالسحب */}
+            {/* مساحة الكانفاس والعناصر المتحركة والقابلة للتكبير بالسحب */}
             <div className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-4">
               <div className="relative inline-block select-none shadow-2xl">
                 <img src={activePageImage} alt="الصفحة للتعديل" className="max-w-full max-h-[75vh] block rounded-lg" />
 
-                {/* العناصر المتحركة المضافة */}
                 {items.map((item) => (
                   <div
                     key={item.id}
                     style={{ left: item.x, top: item.y }}
-                    className="absolute cursor-move border-2 border-dashed border-purple-400 bg-purple-950/40 p-1.5 rounded-lg group"
+                    className="absolute border-2 border-dashed border-purple-400 bg-purple-950/40 p-1.5 rounded-lg group select-none cursor-move"
                     onMouseDown={(e) => {
                       const startX = e.clientX - item.x;
                       const startY = e.clientY - item.y;
+
                       const onMove = (moveEv: MouseEvent) => {
                         setItems((prev) =>
                           prev.map((it) =>
@@ -583,25 +564,67 @@ export default function EditorPage() {
                           )
                         );
                       };
+
                       const onUp = () => {
                         window.removeEventListener("mousemove", onMove);
                         window.removeEventListener("mouseup", onUp);
                       };
+
                       window.addEventListener("mousemove", onMove);
                       window.addEventListener("mouseup", onUp);
                     }}
                   >
                     {item.type === "text" ? (
-                      <span style={{ fontSize: item.size, color: item.color }} className="font-bold">
+                      <span
+                        style={{ fontSize: `${item.size}px`, color: item.color }}
+                        className="font-bold block leading-none pointer-events-none"
+                      >
                         {item.content}
                       </span>
                     ) : (
-                      <img src={item.content} alt="عنصر" style={{ width: item.size }} />
+                      <img
+                        src={item.content}
+                        alt="عنصر"
+                        style={{ width: `${item.size}px` }}
+                        className="pointer-events-none block"
+                      />
                     )}
 
+                    {/* مقبض تغيير الحجم بالسحب في الركن السفلي */}
+                    <div
+                      className="absolute -bottom-2 -left-2 w-4 h-4 bg-purple-400 hover:bg-white rounded-full border-2 border-slate-900 cursor-nwse-resize shadow-md"
+                      title="اسحب لتغيير الحجم"
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        const startX = e.clientX;
+                        const initialSize = item.size;
+
+                        const onResize = (moveEv: MouseEvent) => {
+                          const delta = startX - moveEv.clientX;
+                          const newSize = Math.max(16, Math.min(600, initialSize + delta));
+                          setItems((prev) =>
+                            prev.map((it) => (it.id === item.id ? { ...it, size: newSize } : it))
+                          );
+                        };
+
+                        const onResizeEnd = () => {
+                          window.removeEventListener("mousemove", onResize);
+                          window.removeEventListener("mouseup", onResizeEnd);
+                        };
+
+                        window.addEventListener("mousemove", onResize);
+                        window.addEventListener("mouseup", onResizeEnd);
+                      }}
+                    />
+
+                    {/* زر الحذف السريع */}
                     <button
-                      onClick={() => setItems((prev) => prev.filter((i) => i.id !== item.id))}
-                      className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setItems((prev) => prev.filter((i) => i.id !== item.id));
+                      }}
+                      className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
+                      title="حذف العنصر"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>

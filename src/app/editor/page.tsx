@@ -16,13 +16,14 @@ import {
   Check,
   Sparkles,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 
 interface CanvasItem {
   id: string;
   type: "text" | "image";
-  content: string; // نص أو Base64 للصورة/التوقيع
+  content: string;
   x: number;
   y: number;
   size: number;
@@ -33,12 +34,10 @@ export default function EditorPage() {
   const [mode, setMode] = useState<"single" | "multi" | null>(null);
 
   const [originalFile, setOriginalFile] = useState<File | null>(null);
-  const [pdfDocProxy, setPdfDocProxy] = useState<any>(null);
-  const [pageThumbnails, setPageThumbnails] = useState<string[]>([]);
-  const [selectedPageIndex, setSelectedPageIndex] = useState<number | null>(null);
+  const [totalPages, setTotalPages] = useState<number>(0);
+  const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
 
   const [activePageImage, setActivePageImage] = useState<string | null>(null);
-
   const [items, setItems] = useState<CanvasItem[]>([]);
   const [activeTool, setActiveTool] = useState<"text" | "signature" | "stamp" | null>(null);
 
@@ -51,86 +50,111 @@ export default function EditorPage() {
 
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  // تحميل صفحات الـ PDF كصور مصغرة
-  const loadPdfThumbnails = async (file: File) => {
-    setProcessing(true);
-    try {
-      const pdfjsLib = await import("pdfjs-dist/build/pdf.min.mjs" as any);
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+  // تحويل صفحة من PDF إلى صورة عبر Canvas بطريقة متوافقة ومباشرة
+  const renderPdfPageToImage = async (file: File, pageNum: number): Promise<string> => {
+    // نستخدم الـ CDN بطريقة مضمونة ومتوافقة عالمياً
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as any).catch(async () => {
+      return await import("pdfjs-dist" as any);
+    });
 
-      const arrayBuffer = await file.arrayBuffer();
-      const loadedPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      setPdfDocProxy(loadedPdf);
-
-      const thumbs: string[] = [];
-      for (let i = 1; i <= loadedPdf.numPages; i++) {
-        const page = await loadedPdf.getPage(i);
-        const viewport = page.getViewport({ scale: 0.5 });
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        thumbs.push(canvas.toDataURL("image/jpeg"));
-      }
-      setPageThumbnails(thumbs);
-    } catch (err) {
-      console.error("فشل قراءة صفحات PDF:", err);
-    } finally {
-      setProcessing(false);
+    if (pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || "3.11.174"}/build/pdf.worker.min.js`;
     }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({
+      data: arrayBuffer,
+      cMapUrl: "https://unpkg.com/pdfjs-dist/cmaps/",
+      cMapPacked: true,
+    });
+    const pdf = await loadingTask.promise;
+    const page = await pdf.getPage(pageNum);
+
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return canvas.toDataURL("image/jpeg", 0.95);
   };
 
-  // فتح صفحة محددة داخل الكانفاس
-  const openPageInEditor = async (pageIdx: number) => {
-    setSelectedPageIndex(pageIdx);
-    setProcessing(true);
-    try {
-      const page = await pdfDocProxy.getPage(pageIdx + 1);
-      const viewport = page.getViewport({ scale: 1.5 });
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      setActivePageImage(canvas.toDataURL("image/jpeg"));
-      setItems([]);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  // رفع صفحة واحدة أو صورة
-  const handleSingleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // رفع ملف صفحة واحدة أو صورة
+  const handleSingleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setActivePageImage(reader.result as string);
+    setProcessing(true);
+    setStatusMsg("جاري تحميل ومعالجة المستند...");
+
+    try {
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setActivePageImage(reader.result as string);
+          setItems([]);
+          setProcessing(false);
+          setStatusMsg(null);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setOriginalFile(file);
+        const imgData = await renderPdfPageToImage(file, 1);
+        setActivePageImage(imgData);
         setItems([]);
-      };
-      reader.readAsDataURL(file);
-    } else if (file.type === "application/pdf") {
-      setOriginalFile(file);
-      loadPdfThumbnails(file).then(() => {
-        openPageInEditor(0);
-      });
+      }
+    } catch (err) {
+      console.error(err);
+      setStatusMsg("حدث خطأ أثناء قراءة الملف. يرجى تجربة ملف آخر.");
+    } finally {
+      setProcessing(false);
     }
   };
 
   // رفع ملف متعدد الصفحات
-  const handleMultiUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMultiUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setOriginalFile(file);
-    loadPdfThumbnails(file);
+
+    setProcessing(true);
+    setStatusMsg("جاري قراءة صفحات المستند...");
+
+    try {
+      setOriginalFile(file);
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      const count = pdfDoc.getPageCount();
+      setTotalPages(count);
+    } catch (err) {
+      console.error(err);
+      setStatusMsg("فشل فتح الملف. تأكد أنه ملف PDF سليم وغير محمي بكلمة مرور.");
+    } finally {
+      setProcessing(false);
+      setStatusMsg(null);
+    }
+  };
+
+  // فتح صفحة محددة للتعديل في الملف المتعدد
+  const choosePageToEdit = async (pageIdx: number) => {
+    if (!originalFile) return;
+    setProcessing(true);
+    setSelectedPageIndex(pageIdx);
+    setStatusMsg(`جاري تجهيز الصفحة رقم ${pageIdx + 1}...`);
+
+    try {
+      const imgData = await renderPdfPageToImage(originalFile, pageIdx + 1);
+      setActivePageImage(imgData);
+      setItems([]);
+    } catch (err) {
+      console.error(err);
+      setStatusMsg("تعذر عرض هذه الصفحة.");
+    } finally {
+      setProcessing(false);
+      setStatusMsg(null);
+    }
   };
 
   // إضافة نص
@@ -174,7 +198,7 @@ export default function EditorPage() {
     reader.readAsDataURL(file);
   };
 
-  // حفظ التوقيع اليدوي
+  // حفظ التوقيع
   const saveSignature = () => {
     if (!sigCanvasRef.current) return;
     const dataUrl = sigCanvasRef.current.toDataURL("image/png");
@@ -192,7 +216,7 @@ export default function EditorPage() {
     setActiveTool(null);
   };
 
-  // دمج التعديلات وتوليد الصورة النهائية
+  // دمج التعديلات على الصورة
   const renderComposedImage = async (): Promise<string> => {
     return new Promise((resolve) => {
       const bgImg = new Image();
@@ -226,9 +250,11 @@ export default function EditorPage() {
     });
   };
 
-  // اعتماد التعديل واستبدال الصفحة
+  // اعتماد التعديلات وحفظ الملف
   const handleCommitEdit = async () => {
     setProcessing(true);
+    setStatusMsg("جاري حفظ التعديلات وإعداد المستند...");
+
     try {
       const editedDataUrl = await renderComposedImage();
 
@@ -246,12 +272,13 @@ export default function EditorPage() {
         return;
       }
 
+      // إذا كان مستند متعدد الصفحات: استبدال الصفحة المحددة
       const originalBytes = await originalFile.arrayBuffer();
       const pdfDoc = await PDFDocument.load(originalBytes);
       const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
       const embedded = await pdfDoc.embedJpg(imgBytes);
 
-      const targetIdx = selectedPageIndex ?? 0;
+      const targetIdx = selectedPageIndex;
       const targetPage = pdfDoc.getPage(targetIdx);
       const { width, height } = targetPage.getSize();
 
@@ -262,13 +289,10 @@ export default function EditorPage() {
       const updatedBytes = await pdfDoc.save();
       const blob = new Blob([updatedBytes as unknown as BlobPart], { type: "application/pdf" });
       setDownloadUrl(URL.createObjectURL(blob));
-
-      const updatedThumbs = [...pageThumbnails];
-      updatedThumbs[targetIdx] = editedDataUrl;
-      setPageThumbnails(updatedThumbs);
       setActivePageImage(null);
     } catch (err) {
-      console.error("فشل استبدال الصفحة وحفظ الملف:", err);
+      console.error(err);
+      setStatusMsg("حدث خطأ أثناء حفظ التعديلات.");
     } finally {
       setProcessing(false);
     }
@@ -278,7 +302,7 @@ export default function EditorPage() {
     <div className="min-h-screen bg-[#070b12] text-slate-100 font-sans selection:bg-purple-500 selection:text-white relative" dir="rtl">
       <div className="absolute top-0 right-1/4 w-[500px] h-[350px] bg-purple-600/10 blur-[130px] rounded-full pointer-events-none" />
 
-      {/* الهيدر العلوي */}
+      {/* الهيدر */}
       <header className="relative z-30 max-w-6xl mx-auto px-6 py-6 flex items-center justify-between border-b border-slate-900">
         <Link
           href="/"
@@ -297,7 +321,15 @@ export default function EditorPage() {
       </header>
 
       <main className="relative z-20 max-w-5xl mx-auto px-4 py-8">
-        {/* اختيار المسار */}
+        {/* شاشة مؤشر التحميل العام */}
+        {processing && (
+          <div className="fixed inset-0 z-50 bg-[#070b12]/80 backdrop-blur-md flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+            <span className="text-sm font-bold text-white">{statusMsg || "جاري المعالجة..."}</span>
+          </div>
+        )}
+
+        {/* 1. اختيار المسار */}
         {!mode && (
           <div className="max-w-2xl mx-auto text-center space-y-8 pt-8">
             <div className="space-y-3">
@@ -346,11 +378,14 @@ export default function EditorPage() {
           </div>
         )}
 
-        {/* رفع الملف */}
-        {mode && !activePageImage && pageThumbnails.length === 0 && (
+        {/* 2. رفع الملف */}
+        {mode && !activePageImage && totalPages === 0 && (
           <div className="max-w-xl mx-auto space-y-6 pt-6">
             <button
-              onClick={() => setMode(null)}
+              onClick={() => {
+                setMode(null);
+                setOriginalFile(null);
+              }}
               className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5" /> تغيير نوع المستند
@@ -374,13 +409,13 @@ export default function EditorPage() {
           </div>
         )}
 
-        {/* شبكة عرض الصفحات */}
-        {mode === "multi" && !activePageImage && pageThumbnails.length > 0 && (
+        {/* 3. شاشة اختيار الصفحة في المستند المتعدد */}
+        {mode === "multi" && !activePageImage && totalPages > 0 && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-950/70 border border-slate-800 p-5 rounded-2xl">
               <div>
-                <h2 className="text-base font-bold text-white">صفحات المستند ({pageThumbnails.length})</h2>
-                <p className="text-xs text-slate-400">اضغط على أي صفحة للدخول للمحرر وتوقيعها أو ختمها</p>
+                <h2 className="text-base font-bold text-white">صفحات المستند ({totalPages} صفحة)</h2>
+                <p className="text-xs text-slate-400">اضغط على رقم الصفحة التي ترغب بتوقيعها أو تعديلها:</p>
               </div>
 
               {downloadUrl && (
@@ -394,27 +429,26 @@ export default function EditorPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {pageThumbnails.map((thumb, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => openPageInEditor(idx)}
-                  className="relative group cursor-pointer bg-slate-900 border border-slate-800 hover:border-purple-500 rounded-2xl overflow-hidden p-2 transition flex flex-col items-center"
+            {/* شبكة أرقام الصفحات للاختيار السريع */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
+              {Array.from({ length: totalPages }, (_, i) => (
+                <button
+                  key={i}
+                  onClick={() => choosePageToEdit(i)}
+                  className="p-6 rounded-2xl bg-slate-900 border border-slate-800 hover:border-purple-500 hover:bg-purple-950/20 transition flex flex-col items-center justify-center gap-2 group"
                 >
-                  <img src={thumb} alt={`صفحة ${idx + 1}`} className="w-full h-auto rounded-lg shadow-md" />
-                  <span className="mt-2 text-xs font-bold text-slate-400 group-hover:text-purple-400">
-                    صفحة {idx + 1}
+                  <FileText className="w-8 h-8 text-slate-500 group-hover:text-purple-400 transition" />
+                  <span className="text-sm font-bold text-slate-200">صفحة {i + 1}</span>
+                  <span className="text-[11px] text-purple-400 opacity-0 group-hover:opacity-100 transition">
+                    اضغط للتعديل
                   </span>
-                  <div className="absolute inset-0 bg-purple-950/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition rounded-2xl text-xs font-bold text-white gap-1.5">
-                    <FileSignature className="w-4 h-4" /> تعديل وتوقيع
-                  </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
         )}
 
-        {/* المحرر التفاعلي */}
+        {/* 4. مساحة التعديل والكانفاس */}
         {activePageImage && (
           <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/80 border border-slate-800 p-4 rounded-2xl backdrop-blur-md">
@@ -457,7 +491,7 @@ export default function EditorPage() {
               </button>
             </div>
 
-            {/* أدوات النص */}
+            {/* أدوات كتابة النص */}
             {activeTool === "text" && (
               <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-wrap items-center gap-3">
                 <input
@@ -493,7 +527,7 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* لوحة رسم التوقيع */}
+            {/* لوحة التوقيع الحي */}
             {activeTool === "signature" && (
               <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
                 <span className="text-xs font-bold text-slate-300">ارسم توقيعك في المساحة أدناه:</span>
@@ -541,7 +575,7 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* مساحة الكانفاس والعناصر المتحركة والقابلة للتكبير بالسحب */}
+            {/* مساحة الكانفاس الحرة والعناصر القابلة للتحريك وتغيير الحجم */}
             <div className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-4">
               <div className="relative inline-block select-none shadow-2xl">
                 <img src={activePageImage} alt="الصفحة للتعديل" className="max-w-full max-h-[75vh] block rounded-lg" />
@@ -617,14 +651,13 @@ export default function EditorPage() {
                       }}
                     />
 
-                    {/* زر الحذف السريع */}
+                    {/* زر الحذف */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setItems((prev) => prev.filter((i) => i.id !== item.id));
                       }}
                       className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
-                      title="حذف العنصر"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>

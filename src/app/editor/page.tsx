@@ -29,7 +29,7 @@ interface CanvasItem {
   id: string;
   type: "text" | "image";
   content: string;
-  x: number;
+  x: number; // إحداثيات بالنسبة للصورة المعروضة
   y: number;
   size: number;
   color?: string;
@@ -52,6 +52,7 @@ export default function EditorPage() {
 
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewImgRef = useRef<HTMLImageElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
   const [processing, setProcessing] = useState(false);
@@ -173,14 +174,14 @@ export default function EditorPage() {
     }
   };
 
-  // إضافة صندوق نصي حي ومباشر على الصفحة
+  // إضافة نص مباشر بدون أي حدود
   const addNewTextDirectly = () => {
     const newItem: CanvasItem = {
       id: Date.now().toString(),
       type: "text",
       content: "اكتب النص هنا...",
-      x: 80,
-      y: 100,
+      x: 50,
+      y: 50,
       size: 24,
       color: "#000000",
       weight: "bold",
@@ -191,7 +192,6 @@ export default function EditorPage() {
     setSelectedItemId(newItem.id);
   };
 
-  // تعديل خصائص النص المختار
   const updateSelectedItem = (updates: Partial<CanvasItem>) => {
     if (!selectedItemId) return;
     setItems((prev) =>
@@ -208,8 +208,8 @@ export default function EditorPage() {
         id: Date.now().toString(),
         type: "image",
         content: reader.result as string,
-        x: 80,
-        y: 100,
+        x: 60,
+        y: 60,
         size: 140,
       };
       setItems((prev) => [...prev, newItem]);
@@ -226,8 +226,8 @@ export default function EditorPage() {
       id: Date.now().toString(),
       type: "image",
       content: dataUrl,
-      x: 80,
-      y: 120,
+      x: 60,
+      y: 80,
       size: 160,
     };
     setItems((prev) => [...prev, newItem]);
@@ -235,7 +235,7 @@ export default function EditorPage() {
     setActiveTool(null);
   };
 
-  // دمج التعديلات بدقة مطابقة للأبعاد
+  // دمج التعديلات مع تثبيت الموضع بنسبة 100% بالملي
   const renderComposedImage = async (): Promise<string> => {
     return new Promise((resolve) => {
       const bgImg = new Image();
@@ -267,7 +267,7 @@ export default function EditorPage() {
             ctx.font = `${fontStyle} ${fontWeightVal} ${targetSize}px 'Cairo', sans-serif`;
             ctx.fillStyle = itm.color || "#000000";
             ctx.textBaseline = "top";
-            ctx.textAlign = (itm.align || "right") as CanvasTextAlign;
+            ctx.textAlign = "right"; // دائماً يمين لثبات الإحداثيات العربية
 
             ctx.fillText(itm.content, targetX, targetY);
           } else if (itm.type === "image") {
@@ -289,7 +289,7 @@ export default function EditorPage() {
 
   const handleCommitEdit = async () => {
     setProcessing(true);
-    setStatusMsg("جاري حفظ التعديلات وإعداد المستند بدقة...");
+    setStatusMsg("جاري حفظ التعديلات في نفس الموضع المختار تماماً...");
 
     try {
       const editedDataUrl = await renderComposedImage();
@@ -334,7 +334,7 @@ export default function EditorPage() {
       setSelectedItemId(null);
     } catch (err) {
       console.error(err);
-      setStatusMsg("حدث خطأ أثناء معالجة وحفظ المستند.");
+      setStatusMsg("حدث خطأ أثناء حفظ المستند.");
     } finally {
       setProcessing(false);
     }
@@ -476,13 +476,12 @@ export default function EditorPage() {
           </div>
         )}
 
-        {/* 4. مساحة التعديل والكانفاس مع الكتابة والمؤثرات الحية */}
+        {/* 4. مساحة التعديل والكانفاس مع الكتابة المباشرة بدون أي حدود */}
         {activePageImage && (
           <div className="space-y-5">
-            {/* شريط الإجراءات الرئيسي والأدوات */}
+            {/* شريط الإجراءات الرئيسي */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/90 border border-slate-800 p-4 rounded-2xl backdrop-blur-md">
               <div className="flex flex-wrap items-center gap-2">
-                {/* زر إضافة نص فوري */}
                 <button
                   onClick={addNewTextDirectly}
                   className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border bg-purple-600 hover:bg-purple-500 text-white transition shadow-lg shadow-purple-600/20"
@@ -507,7 +506,7 @@ export default function EditorPage() {
                 </label>
               </div>
 
-              {/* زر الحفظ النهائي */}
+              {/* زر الحفظ */}
               <button
                 onClick={handleCommitEdit}
                 disabled={processing}
@@ -518,14 +517,13 @@ export default function EditorPage() {
               </button>
             </div>
 
-            {/* شريط المؤثرات والخصائص للنص المختار حالياً */}
+            {/* شريط المؤثرات للنص المختار */}
             {selectedItem && selectedItem.type === "text" && (
-              <div className="p-3 bg-slate-900/90 border border-purple-500/40 rounded-2xl flex flex-wrap items-center gap-3 animate-in fade-in duration-200">
+              <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-2xl flex flex-wrap items-center gap-3">
                 <span className="text-xs font-bold text-purple-400 flex items-center gap-1">
                   <Type className="w-3.5 h-3.5" /> تنسيق النص:
                 </span>
 
-                {/* اللون */}
                 <input
                   type="color"
                   value={selectedItem.color || "#000000"}
@@ -534,12 +532,10 @@ export default function EditorPage() {
                   title="لون الخط"
                 />
 
-                {/* الحجم */}
                 <select
                   value={selectedItem.size}
                   onChange={(e) => updateSelectedItem({ size: Number(e.target.value) })}
                   className="bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white"
-                  title="حجم الخط"
                 >
                   <option value={16}>16px</option>
                   <option value={20}>20px</option>
@@ -550,7 +546,6 @@ export default function EditorPage() {
                   <option value={60}>60px</option>
                 </select>
 
-                {/* سمك الخط */}
                 <div className="flex border border-slate-700 rounded-xl overflow-hidden bg-slate-950">
                   <button
                     type="button"
@@ -575,7 +570,6 @@ export default function EditorPage() {
                   </button>
                 </div>
 
-                {/* مائل */}
                 <button
                   type="button"
                   onClick={() => updateSelectedItem({ isItalic: !selectedItem.isItalic })}
@@ -585,13 +579,11 @@ export default function EditorPage() {
                   <Italic className="w-3.5 h-3.5" />
                 </button>
 
-                {/* المحاذاة */}
                 <div className="flex border border-slate-700 rounded-xl overflow-hidden bg-slate-950">
                   <button
                     type="button"
                     onClick={() => updateSelectedItem({ align: "right" })}
                     className={`p-1.5 ${selectedItem.align === "right" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
-                    title="محاذاة لليمين"
                   >
                     <AlignRight className="w-3.5 h-3.5" />
                   </button>
@@ -599,7 +591,6 @@ export default function EditorPage() {
                     type="button"
                     onClick={() => updateSelectedItem({ align: "center" })}
                     className={`p-1.5 ${selectedItem.align === "center" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
-                    title="توسيط"
                   >
                     <AlignCenter className="w-3.5 h-3.5" />
                   </button>
@@ -607,7 +598,6 @@ export default function EditorPage() {
                     type="button"
                     onClick={() => updateSelectedItem({ align: "left" })}
                     className={`p-1.5 ${selectedItem.align === "left" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
-                    title="محاذاة لليسار"
                   >
                     <AlignLeft className="w-3.5 h-3.5" />
                   </button>
@@ -673,12 +663,13 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* مساحة الكانفاس والكتابة الحية المباشرة */}
+            {/* مساحة الكانفاس والكتابة بدون أي حدود نهائياً */}
             <div
               onClick={() => setSelectedItemId(null)}
               className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-4 min-h-[500px]"
             >
               <div
+                ref={containerRef}
                 className="relative inline-block select-none shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -694,20 +685,17 @@ export default function EditorPage() {
                   return (
                     <div
                       key={item.id}
-                      style={{ left: item.x, top: item.y }}
+                      style={{ left: `${item.x}px`, top: `${item.y}px` }}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedItemId(item.id);
                       }}
-                      className={`absolute bg-transparent rounded select-none cursor-move transition-all ${
-                        isSelected
-                          ? "border-2 border-purple-400 shadow-md ring-2 ring-purple-500/20"
-                          : "border border-dashed border-slate-500/40 hover:border-purple-400"
-                      }`}
+                      // لا توجد أي حدود ملونة أو بنفسجية إطلاقاً
+                      className="absolute bg-transparent rounded select-none cursor-move group"
                       onMouseDown={(e) => {
-                        // لا نبدأ السحب إذا كان المستخدم يكتب داخل حقل النص
                         if ((e.target as HTMLElement).tagName === "INPUT") return;
                         setSelectedItemId(item.id);
+
                         const startX = e.clientX - item.x;
                         const startY = e.clientY - item.y;
 
@@ -730,7 +718,6 @@ export default function EditorPage() {
                         window.addEventListener("mouseup", onUp);
                       }}
                     >
-                      {/* صندوق كتابة حي ومباشر على الصفحة */}
                       {item.type === "text" ? (
                         <input
                           type="text"
@@ -748,9 +735,10 @@ export default function EditorPage() {
                             fontWeight: item.weight || "bold",
                             fontStyle: item.isItalic ? "italic" : "normal",
                             textAlign: item.align || "right",
-                            width: `${Math.max(140, item.content.length * (item.size * 0.75))}px`,
+                            width: `${Math.max(120, item.content.length * (item.size * 0.72))}px`,
                           }}
-                          className="bg-transparent border-0 outline-none leading-tight px-1 cursor-text"
+                          // خلفية شفافة وبدون أي بوردر أو أوتلاين
+                          className="bg-transparent border-0 outline-none p-0 m-0 leading-none cursor-text shadow-none"
                         />
                       ) : (
                         <img
@@ -761,9 +749,9 @@ export default function EditorPage() {
                         />
                       )}
 
-                      {/* مقبض تغيير الحجم بالسحب */}
+                      {/* مقبض تغيير الحجم يظهر فقط عند الوقوف على العنصر */}
                       <div
-                        className="absolute -bottom-2 -left-2 w-4 h-4 bg-purple-400 hover:bg-white rounded-full border border-black cursor-nwse-resize shadow"
+                        className="absolute -bottom-2 -left-2 w-3.5 h-3.5 bg-white/80 hover:bg-white rounded-full border border-black cursor-nwse-resize shadow opacity-0 group-hover:opacity-100 transition"
                         title="اسحب لتغيير الحجم"
                         onMouseDown={(e) => {
                           e.stopPropagation();
@@ -795,9 +783,9 @@ export default function EditorPage() {
                           setItems((prev) => prev.filter((i) => i.id !== item.id));
                           if (selectedItemId === item.id) setSelectedItemId(null);
                         }}
-                        className="absolute -top-3 -right-3 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition shadow"
+                        className="absolute -top-3 -right-3 w-4 h-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
                       >
-                        <Trash2 className="w-3 h-3" />
+                        <Trash2 className="w-2.5 h-2.5" />
                       </button>
                     </div>
                   );

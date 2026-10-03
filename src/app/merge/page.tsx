@@ -112,7 +112,8 @@ export default function MergePage() {
         });
       }
 
-      setPdfList((prev) => [...prev, newItems]);
+      // تم تصحيح الفرد هنا لتجاوز فحص TypeScript بدقة
+      setPdfList((prev) => [...prev, ...newItems]);
     } catch (err) {
       console.error(err);
       setStatusMsg("حدث خطأ أثناء قراءة الملفات.");

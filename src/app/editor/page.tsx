@@ -42,7 +42,7 @@ export default function EditorPage() {
   const [activeTool, setActiveTool] = useState<"text" | "signature" | "stamp" | null>(null);
 
   const [textInput, setTextInput] = useState("");
-  const [textColor, setTextColor] = useState("#ffffff");
+  const [textColor, setTextColor] = useState("#000000");
   const [textSize, setTextSize] = useState(24);
 
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -52,7 +52,6 @@ export default function EditorPage() {
   const [processing, setProcessing] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  // تحميل مكتبة pdfjs بشكل نقي في المتصفح فقط دون تدخل Turbopack
   const getPdfJs = async (): Promise<any> => {
     if (typeof window === "undefined") return null;
     if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
@@ -75,7 +74,6 @@ export default function EditorPage() {
     });
   };
 
-  // تحويل صفحة من PDF إلى صورة عبر Canvas
   const renderPdfPageToImage = async (file: File, pageNum: number): Promise<string> => {
     const pdfjsLib = await getPdfJs();
     const arrayBuffer = await file.arrayBuffer();
@@ -94,10 +92,9 @@ export default function EditorPage() {
     canvas.height = viewport.height;
 
     await page.render({ canvasContext: ctx, viewport }).promise;
-    return canvas.toDataURL("image/jpeg", 0.95);
+    return canvas.toDataURL("image/png");
   };
 
-  // رفع ملف صفحة واحدة أو صورة
   const handleSingleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -129,7 +126,6 @@ export default function EditorPage() {
     }
   };
 
-  // رفع ملف متعدد الصفحات
   const handleMultiUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -152,7 +148,6 @@ export default function EditorPage() {
     }
   };
 
-  // فتح صفحة محددة للتعديل في الملف المتعدد
   const choosePageToEdit = async (pageIdx: number) => {
     if (!originalFile) return;
     setProcessing(true);
@@ -172,7 +167,6 @@ export default function EditorPage() {
     }
   };
 
-  // إضافة نص
   const addTextItem = () => {
     if (!textInput.trim()) return;
     setItems((prev) => [
@@ -181,8 +175,8 @@ export default function EditorPage() {
         id: Date.now().toString(),
         type: "text",
         content: textInput,
-        x: 60,
-        y: 80,
+        x: 50,
+        y: 50,
         size: textSize,
         color: textColor,
       },
@@ -191,7 +185,6 @@ export default function EditorPage() {
     setActiveTool(null);
   };
 
-  // رفع ختم أو صورة
   const handleStampUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -203,8 +196,8 @@ export default function EditorPage() {
           id: Date.now().toString(),
           type: "image",
           content: reader.result as string,
-          x: 60,
-          y: 60,
+          x: 50,
+          y: 50,
           size: 140,
         },
       ]);
@@ -213,7 +206,6 @@ export default function EditorPage() {
     reader.readAsDataURL(file);
   };
 
-  // حفظ التوقيع
   const saveSignature = () => {
     if (!sigCanvasRef.current) return;
     const dataUrl = sigCanvasRef.current.toDataURL("image/png");
@@ -223,90 +215,101 @@ export default function EditorPage() {
         id: Date.now().toString(),
         type: "image",
         content: dataUrl,
-        x: 60,
-        y: 120,
+        x: 50,
+        y: 80,
         size: 160,
       },
     ]);
     setActiveTool(null);
   };
 
-  // دمج التعديلات على الصورة
+  // دمج التعديلات على الصورة مع الحفاظ التام على الشفافية
   const renderComposedImage = async (): Promise<string> => {
     return new Promise((resolve) => {
       const bgImg = new Image();
       bgImg.src = activePageImage!;
       bgImg.onload = async () => {
         const offscreen = document.createElement("canvas");
-        offscreen.width = bgImg.width;
-        offscreen.height = bgImg.height;
+        offscreen.width = bgImg.naturalWidth || bgImg.width;
+        offscreen.height = bgImg.naturalHeight || bgImg.height;
         const ctx = offscreen.getContext("2d")!;
 
         ctx.drawImage(bgImg, 0, 0);
 
         for (const itm of items) {
           if (itm.type === "text") {
-            ctx.font = `${itm.size}px Cairo, sans-serif`;
-            ctx.fillStyle = itm.color || "#ffffff";
+            ctx.font = `bold ${itm.size}px Cairo, sans-serif`;
+            ctx.fillStyle = itm.color || "#000000";
+            ctx.textBaseline = "top";
             ctx.fillText(itm.content, itm.x, itm.y);
           } else if (itm.type === "image") {
             const img = new Image();
             img.src = itm.content;
             await new Promise((r) => {
               img.onload = () => {
-                ctx.drawImage(img, itm.x, itm.y, itm.size, (img.height / img.width) * itm.size);
+                const ratio = img.height / img.width;
+                ctx.drawImage(img, itm.x, itm.y, itm.size, itm.size * ratio);
                 r(null);
               };
             });
           }
         }
-        resolve(offscreen.toDataURL("image/jpeg", 0.95));
+        resolve(offscreen.toDataURL("image/png"));
       };
     });
   };
 
-  // اعتماد التعديلات وحفظ الملف
+  // اعتماد التعديلات وحفظ وتحميل الملف فوراً
   const handleCommitEdit = async () => {
     setProcessing(true);
-    setStatusMsg("جاري حفظ التعديلات وإعداد المستند...");
+    setStatusMsg("جاري حفظ التعديلات وإعداد ملف الـ PDF...");
 
     try {
       const editedDataUrl = await renderComposedImage();
+      let finalBlob: Blob;
 
       if (mode === "single" || !originalFile) {
         const newPdf = await PDFDocument.create();
         const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
-        const embedded = await newPdf.embedJpg(imgBytes);
+        const embedded = await newPdf.embedPng(imgBytes);
         const page = newPdf.addPage([embedded.width, embedded.height]);
         page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
 
         const bytes = await newPdf.save();
-        const blob = new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
-        setDownloadUrl(URL.createObjectURL(blob));
-        setActivePageImage(null);
-        return;
+        finalBlob = new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
+      } else {
+        const originalBytes = await originalFile.arrayBuffer();
+        const pdfDoc = await PDFDocument.load(originalBytes);
+        const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
+        const embedded = await pdfDoc.embedPng(imgBytes);
+
+        const targetIdx = selectedPageIndex;
+        const targetPage = pdfDoc.getPage(targetIdx);
+        const { width, height } = targetPage.getSize();
+
+        const newPage = pdfDoc.insertPage(targetIdx, [width, height]);
+        newPage.drawImage(embedded, { x: 0, y: 0, width, height });
+        pdfDoc.removePage(targetIdx + 1);
+
+        const updatedBytes = await pdfDoc.save();
+        finalBlob = new Blob([updatedBytes as unknown as BlobPart], { type: "application/pdf" });
       }
 
-      const originalBytes = await originalFile.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(originalBytes);
-      const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
-      const embedded = await pdfDoc.embedJpg(imgBytes);
+      // تجهيز رابط التحميل وتحميل الملف تلقائياً
+      const downloadLink = URL.createObjectURL(finalBlob);
+      setDownloadUrl(downloadLink);
 
-      const targetIdx = selectedPageIndex;
-      const targetPage = pdfDoc.getPage(targetIdx);
-      const { width, height } = targetPage.getSize();
+      const a = document.createElement("a");
+      a.href = downloadLink;
+      a.download = `apdf_edited_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
 
-      const newPage = pdfDoc.insertPage(targetIdx, [width, height]);
-      newPage.drawImage(embedded, { x: 0, y: 0, width, height });
-      pdfDoc.removePage(targetIdx + 1);
-
-      const updatedBytes = await pdfDoc.save();
-      const blob = new Blob([updatedBytes as unknown as BlobPart], { type: "application/pdf" });
-      setDownloadUrl(URL.createObjectURL(blob));
       setActivePageImage(null);
     } catch (err) {
-      console.error(err);
-      setStatusMsg("حدث خطأ أثناء حفظ التعديلات.");
+      console.error("فشل حفظ الملف:", err);
+      setStatusMsg("حدث خطأ أثناء معالجة المستند وحفظه.");
     } finally {
       setProcessing(false);
     }
@@ -496,10 +499,10 @@ export default function EditorPage() {
               <button
                 onClick={handleCommitEdit}
                 disabled={processing}
-                className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-slate-950 px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition"
+                className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-slate-950 px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition cursor-pointer"
               >
                 <Check className="w-4 h-4" />
-                {mode === "multi" ? "اعتماد الصفحة والعودة للمستند" : "حفظ وتحميل المستند"}
+                حفظ وتحميل المستند (PDF)
               </button>
             </div>
 
@@ -558,14 +561,14 @@ export default function EditorPage() {
                     if (!isDrawing) return;
                     const ctx = sigCanvasRef.current?.getContext("2d");
                     if (!ctx) return;
-                    ctx.strokeStyle = "#ffffff";
+                    ctx.strokeStyle = "#000000";
                     ctx.lineWidth = 2.5;
                     ctx.lineCap = "round";
                     ctx.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
                     ctx.stroke();
                   }}
                   onMouseUp={() => setIsDrawing(false)}
-                  className="bg-slate-950 border border-slate-700 rounded-xl cursor-crosshair w-full max-w-[400px]"
+                  className="bg-white border border-slate-700 rounded-xl cursor-crosshair w-full max-w-[400px]"
                 />
                 <div className="flex gap-2">
                   <button
@@ -587,7 +590,7 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* مساحة الكانفاس الحرة والعناصر القابلة للتحريك وتغيير الحجم */}
+            {/* مساحة الكانفاس بدون أي خلفية بنفسجية إطلاقاً */}
             <div className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-4">
               <div className="relative inline-block select-none shadow-2xl">
                 <img src={activePageImage} alt="الصفحة للتعديل" className="max-w-full max-h-[75vh] block rounded-lg" />
@@ -596,7 +599,7 @@ export default function EditorPage() {
                   <div
                     key={item.id}
                     style={{ left: item.x, top: item.y }}
-                    className="absolute border-2 border-dashed border-purple-400 bg-purple-950/40 p-1.5 rounded-lg group select-none cursor-move"
+                    className="absolute border border-dashed border-purple-400 hover:border-emerald-400 bg-transparent p-1 rounded group select-none cursor-move"
                     onMouseDown={(e) => {
                       const startX = e.clientX - item.x;
                       const startY = e.clientY - item.y;
@@ -623,7 +626,7 @@ export default function EditorPage() {
                     {item.type === "text" ? (
                       <span
                         style={{ fontSize: `${item.size}px`, color: item.color }}
-                        className="font-bold block leading-none pointer-events-none"
+                        className="font-bold block leading-tight pointer-events-none select-none"
                       >
                         {item.content}
                       </span>
@@ -636,9 +639,9 @@ export default function EditorPage() {
                       />
                     )}
 
-                    {/* مقبض تغيير الحجم بالسحب في الركن السفلي */}
+                    {/* مقبض تغيير الحجم بالسحب */}
                     <div
-                      className="absolute -bottom-2 -left-2 w-4 h-4 bg-purple-400 hover:bg-white rounded-full border-2 border-slate-900 cursor-nwse-resize shadow-md"
+                      className="absolute -bottom-2 -left-2 w-4 h-4 bg-purple-400 hover:bg-white rounded-full border border-black cursor-nwse-resize shadow"
                       title="اسحب لتغيير الحجم"
                       onMouseDown={(e) => {
                         e.stopPropagation();
@@ -647,7 +650,7 @@ export default function EditorPage() {
 
                         const onResize = (moveEv: MouseEvent) => {
                           const delta = startX - moveEv.clientX;
-                          const newSize = Math.max(16, Math.min(600, initialSize + delta));
+                          const newSize = Math.max(14, Math.min(600, initialSize + delta));
                           setItems((prev) =>
                             prev.map((it) => (it.id === item.id ? { ...it, size: newSize } : it))
                           );
@@ -669,7 +672,7 @@ export default function EditorPage() {
                         e.stopPropagation();
                         setItems((prev) => prev.filter((i) => i.id !== item.id));
                       }}
-                      className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
+                      className="absolute -top-3 -right-3 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>

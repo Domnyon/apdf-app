@@ -17,6 +17,11 @@ import {
   Sparkles,
   Trash2,
   Loader2,
+  Bold,
+  Italic,
+  AlignRight,
+  AlignCenter,
+  AlignLeft,
 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
 
@@ -28,6 +33,9 @@ interface CanvasItem {
   y: number;
   size: number;
   color?: string;
+  weight?: string;
+  isItalic?: boolean;
+  align?: "right" | "center" | "left";
 }
 
 export default function EditorPage() {
@@ -41,11 +49,16 @@ export default function EditorPage() {
   const [items, setItems] = useState<CanvasItem[]>([]);
   const [activeTool, setActiveTool] = useState<"text" | "signature" | "stamp" | null>(null);
 
+  // إعدادات النصوص
   const [textInput, setTextInput] = useState("");
   const [textColor, setTextColor] = useState("#000000");
   const [textSize, setTextSize] = useState(24);
+  const [fontWeight, setFontWeight] = useState("bold");
+  const [isItalic, setIsItalic] = useState(false);
+  const [textAlign, setTextAlign] = useState<"right" | "center" | "left">("right");
 
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewImgRef = useRef<HTMLImageElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
@@ -137,8 +150,7 @@ export default function EditorPage() {
       setOriginalFile(file);
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const count = pdfDoc.getPageCount();
-      setTotalPages(count);
+      setTotalPages(pdfDoc.getPageCount());
     } catch (err) {
       console.error(err);
       setStatusMsg("فشل فتح الملف. تأكد أنه ملف PDF سليم.");
@@ -175,10 +187,13 @@ export default function EditorPage() {
         id: Date.now().toString(),
         type: "text",
         content: textInput,
-        x: 50,
-        y: 50,
+        x: 60,
+        y: 60,
         size: textSize,
         color: textColor,
+        weight: fontWeight,
+        isItalic: isItalic,
+        align: textAlign,
       },
     ]);
     setTextInput("");
@@ -196,8 +211,8 @@ export default function EditorPage() {
           id: Date.now().toString(),
           type: "image",
           content: reader.result as string,
-          x: 50,
-          y: 50,
+          x: 60,
+          y: 60,
           size: 140,
         },
       ]);
@@ -215,7 +230,7 @@ export default function EditorPage() {
         id: Date.now().toString(),
         type: "image",
         content: dataUrl,
-        x: 50,
+        x: 60,
         y: 80,
         size: 160,
       },
@@ -223,32 +238,50 @@ export default function EditorPage() {
     setActiveTool(null);
   };
 
-  // دمج التعديلات على الصورة مع الحفاظ التام على الشفافية
+  // دمج التعديلات مع مطابقة الإحداثيات والحجم 100% بين الشاشة والملف الأصلي
   const renderComposedImage = async (): Promise<string> => {
     return new Promise((resolve) => {
       const bgImg = new Image();
       bgImg.src = activePageImage!;
       bgImg.onload = async () => {
         const offscreen = document.createElement("canvas");
-        offscreen.width = bgImg.naturalWidth || bgImg.width;
-        offscreen.height = bgImg.naturalHeight || bgImg.height;
+        const naturalW = bgImg.naturalWidth || bgImg.width;
+        const naturalH = bgImg.naturalHeight || bgImg.height;
+
+        offscreen.width = naturalW;
+        offscreen.height = naturalH;
         const ctx = offscreen.getContext("2d")!;
 
+        // رسم خلفية الصفحة بدقتها الكاملة
         ctx.drawImage(bgImg, 0, 0);
 
+        // حساب نسبة التحجيم بين شاشة العرض والأبعاد الأصلية للمستند
+        const displayW = previewImgRef.current?.clientWidth || naturalW;
+        const displayH = previewImgRef.current?.clientHeight || naturalH;
+        const scaleX = naturalW / displayW;
+        const scaleY = naturalH / displayH;
+
         for (const itm of items) {
+          const targetX = itm.x * scaleX;
+          const targetY = itm.y * scaleY;
+          const targetSize = itm.size * scaleX;
+
           if (itm.type === "text") {
-            ctx.font = `bold ${itm.size}px Cairo, sans-serif`;
+            const fontStyle = itm.isItalic ? "italic" : "normal";
+            const fontWeightVal = itm.weight || "bold";
+            ctx.font = `${fontStyle} ${fontWeightVal} ${targetSize}px 'Cairo', sans-serif`;
             ctx.fillStyle = itm.color || "#000000";
             ctx.textBaseline = "top";
-            ctx.fillText(itm.content, itm.x, itm.y);
+            ctx.textAlign = (itm.align || "right") as CanvasTextAlign;
+
+            ctx.fillText(itm.content, targetX, targetY);
           } else if (itm.type === "image") {
             const img = new Image();
             img.src = itm.content;
             await new Promise((r) => {
               img.onload = () => {
                 const ratio = img.height / img.width;
-                ctx.drawImage(img, itm.x, itm.y, itm.size, itm.size * ratio);
+                ctx.drawImage(img, targetX, targetY, targetSize, targetSize * ratio);
                 r(null);
               };
             });
@@ -259,10 +292,9 @@ export default function EditorPage() {
     });
   };
 
-  // اعتماد التعديلات وحفظ وتحميل الملف فوراً
   const handleCommitEdit = async () => {
     setProcessing(true);
-    setStatusMsg("جاري حفظ التعديلات وإعداد ملف الـ PDF...");
+    setStatusMsg("جاري حفظ التعديلات وإعداد المستند بدقة...");
 
     try {
       const editedDataUrl = await renderComposedImage();
@@ -295,7 +327,6 @@ export default function EditorPage() {
         finalBlob = new Blob([updatedBytes as unknown as BlobPart], { type: "application/pdf" });
       }
 
-      // تجهيز رابط التحميل وتحميل الملف تلقائياً
       const downloadLink = URL.createObjectURL(finalBlob);
       setDownloadUrl(downloadLink);
 
@@ -308,8 +339,8 @@ export default function EditorPage() {
 
       setActivePageImage(null);
     } catch (err) {
-      console.error("فشل حفظ الملف:", err);
-      setStatusMsg("حدث خطأ أثناء معالجة المستند وحفظه.");
+      console.error(err);
+      setStatusMsg("حدث خطأ أثناء معالجة المستند.");
     } finally {
       setProcessing(false);
     }
@@ -506,7 +537,7 @@ export default function EditorPage() {
               </button>
             </div>
 
-            {/* أدوات كتابة النص */}
+            {/* أدوات كتابة النص المتقدمة */}
             {activeTool === "text" && (
               <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-wrap items-center gap-3">
                 <input
@@ -514,28 +545,98 @@ export default function EditorPage() {
                   placeholder="اكتب النص هنا..."
                   value={textInput}
                   onChange={(e) => setTextInput(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white flex-1 focus:outline-none focus:border-purple-500"
+                  className="bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white flex-1 min-w-[200px] focus:outline-none focus:border-purple-500"
                 />
+
+                {/* اللون والحجم */}
                 <input
                   type="color"
                   value={textColor}
                   onChange={(e) => setTextColor(e.target.value)}
                   className="w-10 h-10 rounded-xl cursor-pointer bg-transparent border-0"
-                  title="لون النص"
+                  title="لون الخط"
                 />
+
                 <select
                   value={textSize}
                   onChange={(e) => setTextSize(Number(e.target.value))}
                   className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                  title="حجم الخط"
                 >
-                  <option value={18}>صغير (18px)</option>
-                  <option value={24}>متوسط (24px)</option>
-                  <option value={32}>كبير (32px)</option>
-                  <option value={42}>عريض جداً (42px)</option>
+                  <option value={16}>16px</option>
+                  <option value={20}>20px</option>
+                  <option value={24}>24px</option>
+                  <option value={32}>32px</option>
+                  <option value={40}>40px</option>
+                  <option value={52}>52px</option>
                 </select>
+
+                {/* سمك الخط */}
+                <div className="flex border border-slate-700 rounded-xl overflow-hidden bg-slate-950">
+                  <button
+                    type="button"
+                    onClick={() => setFontWeight("normal")}
+                    className={`px-3 py-2 text-xs font-semibold ${fontWeight === "normal" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                  >
+                    عادي
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFontWeight("bold")}
+                    className={`px-3 py-2 text-xs font-bold ${fontWeight === "bold" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                  >
+                    <Bold className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFontWeight("900")}
+                    className={`px-3 py-2 text-xs font-black ${fontWeight === "900" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                  >
+                    عريض+
+                  </button>
+                </div>
+
+                {/* مائل */}
+                <button
+                  type="button"
+                  onClick={() => setIsItalic(!isItalic)}
+                  className={`p-2 border border-slate-700 rounded-xl ${isItalic ? "bg-purple-600 text-white" : "bg-slate-950 text-slate-400 hover:text-white"}`}
+                  title="مائل"
+                >
+                  <Italic className="w-4 h-4" />
+                </button>
+
+                {/* محاذاة النص */}
+                <div className="flex border border-slate-700 rounded-xl overflow-hidden bg-slate-950">
+                  <button
+                    type="button"
+                    onClick={() => setTextAlign("right")}
+                    className={`p-2 ${textAlign === "right" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    title="محاذاة لليمين"
+                  >
+                    <AlignRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTextAlign("center")}
+                    className={`p-2 ${textAlign === "center" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    title="توسيط"
+                  >
+                    <AlignCenter className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTextAlign("left")}
+                    className={`p-2 ${textAlign === "left" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+                    title="محاذاة لليسار"
+                  >
+                    <AlignLeft className="w-4 h-4" />
+                  </button>
+                </div>
+
                 <button
                   onClick={addTextItem}
-                  className="bg-purple-500 hover:bg-purple-600 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold"
+                  className="bg-purple-500 hover:bg-purple-600 text-slate-950 px-5 py-2 rounded-xl text-xs font-bold"
                 >
                   إدراج
                 </button>
@@ -590,10 +691,15 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* مساحة الكانفاس بدون أي خلفية بنفسجية إطلاقاً */}
+            {/* مساحة الكانفاس الحرة والعناصر القابلة للتحريك بدقة */}
             <div className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-4">
               <div className="relative inline-block select-none shadow-2xl">
-                <img src={activePageImage} alt="الصفحة للتعديل" className="max-w-full max-h-[75vh] block rounded-lg" />
+                <img
+                  ref={previewImgRef}
+                  src={activePageImage}
+                  alt="الصفحة للتعديل"
+                  className="max-w-full max-h-[75vh] block rounded-lg"
+                />
 
                 {items.map((item) => (
                   <div
@@ -625,8 +731,14 @@ export default function EditorPage() {
                   >
                     {item.type === "text" ? (
                       <span
-                        style={{ fontSize: `${item.size}px`, color: item.color }}
-                        className="font-bold block leading-tight pointer-events-none select-none"
+                        style={{
+                          fontSize: `${item.size}px`,
+                          color: item.color,
+                          fontWeight: item.weight || "bold",
+                          fontStyle: item.isItalic ? "italic" : "normal",
+                          textAlign: item.align || "right",
+                        }}
+                        className="block leading-tight pointer-events-none select-none whitespace-pre"
                       >
                         {item.content}
                       </span>

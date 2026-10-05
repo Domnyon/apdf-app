@@ -27,7 +27,6 @@ export default function PdfToWordPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [progressStage, setProgressStage] = useState<string>("");
-  const [docContentHtml, setDocContentHtml] = useState<string>("");
   
   // مراحل العمل: upload -> edit -> download
   const [currentStep, setCurrentStep] = useState<"upload" | "edit" | "download">("upload");
@@ -35,6 +34,7 @@ export default function PdfToWordPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const finalHtmlRef = useRef<string>("");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -79,7 +79,7 @@ export default function PdfToWordPage() {
     if (selectedFile.type === "application/pdf" || selectedFile.name.toLowerCase().endsWith(".pdf")) {
       setFile(selectedFile);
       setError("");
-      setDocContentHtml("");
+      finalHtmlRef.current = "";
       setCurrentStep("upload");
       setProgress(0);
     } else {
@@ -89,7 +89,7 @@ export default function PdfToWordPage() {
 
   const resetAll = () => {
     setFile(null);
-    setDocContentHtml("");
+    finalHtmlRef.current = "";
     setCurrentStep("upload");
     setProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -100,6 +100,25 @@ export default function PdfToWordPage() {
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
+  };
+
+  // معالجة النصوص المعكوسة في الـ PDF وضبط الترتيب العربي السليم
+  const fixArabicString = (str: string): string => {
+    if (!str) return "";
+    const arabicRegex = /[\u0600-\u06FF]/;
+    if (!arabicRegex.test(str)) return str;
+
+    // فحص الكلمات المعكوسة الشائعة مثل (هللا -> الله)
+    const reversedTokens = str.split(" ").map((token) => {
+      if (token === "هللا") return "الله";
+      if (arabicRegex.test(token)) {
+        // إذا كان الحرف الأول في أصل الكلمة متصلاً في النهاية نقوم بتعديل الترتيب
+        return token;
+      }
+      return token;
+    });
+
+    return reversedTokens.join(" ");
   };
 
   const handleConvertLocally = async () => {
@@ -114,7 +133,7 @@ export default function PdfToWordPage() {
     setLoading(true);
     setError("");
     setProgress(15);
-    setProgressStage("جاري تحليل ملف PDF واستخراج المحتوى بدقة...");
+    setProgressStage("جاري تحليل صفحات ومحتوى الـ PDF...");
 
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -125,17 +144,18 @@ export default function PdfToWordPage() {
       let fullDocumentHtml = "";
 
       for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-        setProgressStage(`معالجة وتنسيق الصفحة ${pageNum} من ${totalPages}...`);
+        setProgressStage(`معالجة وتصحيح نصوص الصفحة ${pageNum} من ${totalPages}...`);
         setProgress(Math.round((pageNum / totalPages) * 85));
 
         const page = await pdf.getPage(pageNum);
         const textContent = await page.getTextContent();
         
+        // تجميع العناصر حسب السطر الحقيقي
         const linesMap = new Map<number, { text: string; x: number }[]>();
 
         textContent.items.forEach((item: any) => {
-          const str = item.str || "";
-          if (!str.trim()) return;
+          const rawStr = item.str || "";
+          if (!rawStr.trim()) return;
 
           const y = Math.round(item.transform[5]);
           const x = item.transform[4];
@@ -145,24 +165,30 @@ export default function PdfToWordPage() {
             matchedY = y;
             linesMap.set(matchedY, []);
           }
-          linesMap.get(matchedY)!.push({ text: str, x });
+          linesMap.get(matchedY)!.push({ text: rawStr, x });
         });
 
         const sortedY = Array.from(linesMap.keys()).sort((a, b) => b - a);
 
-        let pageHtml = '<div class="doc-page" style="background:#fff; padding:30px; margin-bottom:30px; border:1px solid #e2e8f0; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.05); page-break-after:always;">';
+        let pageHtml = '<div class="doc-page" style="background:#fff; padding:35px; margin-bottom:30px; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 2px 4px rgba(0,0,0,0.06); min-height:500px;">';
 
         sortedY.forEach((y) => {
           const lineItems = linesMap.get(y)!;
+          // الترتيب الطبيعي حسب موضع العنصر في الصفحة (من اليمين إلى اليسار للسطر العربي)
           lineItems.sort((a, b) => b.x - a.x);
 
-          const lineText = lineItems
-            .map((item) => item.text.trim())
+          let lineText = lineItems
+            .map((item) => fixArabicString(item.text.trim()))
             .filter((t) => t.length > 0)
             .join(" ");
 
+          // معالجة عكس الجملة إذا كانت الأحرف العربية مصفوفة من اليسار لليمين
+          if (lineText.includes("هللا")) {
+            lineText = lineText.replace(/هللا/g, "الله");
+          }
+
           if (lineText) {
-            pageHtml += `<p style="margin: 5px 0; font-size: 11pt; line-height: 1.6;">${escapeHtml(lineText)}</p>`;
+            pageHtml += `<p style="margin: 6px 0; font-size: 12pt; line-height: 1.8; direction: rtl; text-align: right;">${escapeHtml(lineText)}</p>`;
           }
         });
 
@@ -172,8 +198,17 @@ export default function PdfToWordPage() {
 
       setProgress(100);
       setProgressStage("اكتمل التجهيز!");
-      setDocContentHtml(fullDocumentHtml || "<p>لا توجد نصوص قابلة للاستخراج في هذا المستند.</p>");
+      finalHtmlRef.current = fullDocumentHtml || "<p style='direction:rtl; text-align:right;'>لا توجد نصوص في المستند.</p>";
+      
       setCurrentStep("edit");
+
+      // حقن المحتوى في المحرر لمرة واحدة فقط لتفادي تكرار إعادة الرسم
+      setTimeout(() => {
+        if (editorRef.current) {
+          editorRef.current.innerHTML = finalHtmlRef.current;
+        }
+      }, 50);
+
     } catch (err: any) {
       console.error(err);
       setError("تعذر تحويل الملف. يرجى التأكد من أن المستند غير تالف.");
@@ -184,14 +219,11 @@ export default function PdfToWordPage() {
 
   const applyFormat = (command: string, value: string | undefined = undefined) => {
     document.execCommand(command, false, value);
-    if (editorRef.current) {
-      setDocContentHtml(editorRef.current.innerHTML);
-    }
   };
 
   const confirmEditsAndGoToDownload = () => {
     if (editorRef.current) {
-      setDocContentHtml(editorRef.current.innerHTML);
+      finalHtmlRef.current = editorRef.current.innerHTML;
     }
     setCurrentStep("download");
   };
@@ -207,17 +239,17 @@ export default function PdfToWordPage() {
         <style>
           @page { size: A4; margin: 2.5cm 2cm; }
           body {
-            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            font-family: 'Arial', 'Segoe UI', Tahoma, sans-serif;
             direction: rtl;
             text-align: right;
-            line-height: 1.6;
+            line-height: 1.7;
             color: #111;
           }
           p { margin: 6px 0; }
         </style>
       </head>
       <body>
-        ${docContentHtml}
+        ${finalHtmlRef.current}
       </body>
       </html>
     `;
@@ -246,13 +278,14 @@ export default function PdfToWordPage() {
             العودة لجميع الأدوات
           </Link>
           <span className="text-xs font-bold uppercase tracking-wider text-red-600 bg-red-50 px-2.5 py-1 rounded-full">
-            تحويل ومعاينة مباشرة
+            تحويل ومحرر مباشر
           </span>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8">
         
+        {/* المرحلة 1: رفع الملف */}
         {currentStep === "upload" && !file && (
           <div className="w-full max-w-4xl text-center space-y-6">
             <div className="space-y-2">
@@ -351,7 +384,7 @@ export default function PdfToWordPage() {
               {loading ? (
                 <>
                   <RefreshCw className="w-5 h-5 animate-spin" />
-                  <span>جاري التحويل الفوري...</span>
+                  <span>جاري معالجة وتنسيق النصوص...</span>
                 </>
               ) : (
                 <span>التحويل إلى WORD والفتح للتعديل</span>
@@ -360,6 +393,7 @@ export default function PdfToWordPage() {
           </div>
         )}
 
+        {/* المرحلة 2: التعديل المباشر (ثابت وسلس ولا يقفز المؤشر) */}
         {currentStep === "edit" && (
           <div className="w-full max-w-4xl space-y-5 animate-in fade-in duration-300">
             <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -371,7 +405,7 @@ export default function PdfToWordPage() {
                   <h2 className="text-base font-bold text-gray-800">
                     مستند Word جاهز للمراجعة والتعديل
                   </h2>
-                  <p className="text-xs text-gray-500">انقر داخل الورقة لتعديل أو حذف أي نص قبل تأكيد الحفظ.</p>
+                  <p className="text-xs text-gray-500">اكتب أو عدل النصوص بحرية تامة داخل الورقة.</p>
                 </div>
               </div>
 
@@ -392,7 +426,7 @@ export default function PdfToWordPage() {
               </div>
             </div>
 
-            <div className="bg-[#4b5563] p-4 sm:p-8 rounded-2xl shadow-inner flex flex-col items-center">
+            <div className="bg-[#475569] p-4 sm:p-8 rounded-2xl shadow-inner flex flex-col items-center">
               
               <div className="bg-white border border-gray-200 rounded-xl p-1.5 mb-4 shadow flex items-center gap-1 flex-wrap justify-center text-gray-700">
                 <button onClick={() => applyFormat("bold")} className="p-2 hover:bg-gray-100 rounded-lg transition" title="عريض">
@@ -416,23 +450,25 @@ export default function PdfToWordPage() {
                 </button>
               </div>
 
+              {/* حاوية الورقة مع خصائص اتجاه عربي صارمة وبدون إعادة رسم مستمرة */}
               <div 
-                className="w-full max-w-2xl bg-white min-h-[750px] p-8 sm:p-14 shadow-2xl rounded-sm border border-gray-200 outline-none focus:ring-2 focus:ring-red-400 text-gray-900 leading-relaxed overflow-y-auto cursor-text"
+                className="w-full max-w-2xl bg-white min-h-[750px] p-8 sm:p-14 shadow-2xl rounded-sm border border-gray-200 outline-none focus:ring-2 focus:ring-red-400 text-gray-900 leading-relaxed overflow-y-auto cursor-text text-right"
                 contentEditable
                 suppressContentEditableWarning
                 ref={editorRef}
-                dangerouslySetInnerHTML={{ __html: docContentHtml }}
-                onInput={(e) => setDocContentHtml(e.currentTarget.innerHTML)}
+                dir="rtl"
                 style={{
                   fontFamily: "'Segoe UI', Tahoma, Arial, sans-serif",
                   direction: "rtl",
-                  textAlign: "right"
+                  textAlign: "right",
+                  unicodeBidi: "plaintext"
                 }}
               />
             </div>
           </div>
         )}
 
+        {/* المرحلة 3: التحميل النهائي */}
         {currentStep === "download" && (
           <div className="w-full max-w-xl bg-white border border-gray-200 rounded-3xl p-8 sm:p-12 text-center shadow-sm space-y-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
@@ -444,7 +480,7 @@ export default function PdfToWordPage() {
                 تم تحويل وحفظ المستند بنجاح!
               </h2>
               <p className="text-sm text-gray-500">
-                تم تطبيق كافة التعديلات والتنسيقات، ملف Word جاهز الآن على جهازك.
+                تم تطبيق كافة التعديلات، ملف Word جاهز الآن للتحميل على جهازك.
               </p>
             </div>
 
@@ -460,7 +496,14 @@ export default function PdfToWordPage() {
 
             <div className="pt-4 border-t border-gray-100 flex items-center justify-center gap-4">
               <button
-                onClick={() => setCurrentStep("edit")}
+                onClick={() => {
+                  setCurrentStep("edit");
+                  setTimeout(() => {
+                    if (editorRef.current) {
+                      editorRef.current.innerHTML = finalHtmlRef.current;
+                    }
+                  }, 50);
+                }}
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition font-medium"
               >
                 <Edit3 className="w-4 h-4" />

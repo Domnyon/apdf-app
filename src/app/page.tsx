@@ -12,6 +12,8 @@ import {
   Sparkles,
   ShieldCheck,
   Zap,
+  Minimize2,
+  Printer,
 } from "lucide-react";
 
 const tools = [
@@ -37,6 +39,22 @@ const tools = [
     href: "/split",
     icon: Scissors,
     color: "from-amber-500 to-orange-600",
+    badge: null,
+  },
+  {
+    title: "ضغط ملفات PDF",
+    desc: "تصغير حجم المستند مع الحفاظ على وضوح الخطوط",
+    href: "/compress",
+    icon: Minimize2,
+    color: "from-rose-500 to-red-600",
+    badge: "مطلوب",
+  },
+  {
+    title: "طباعة ملفات PDF",
+    desc: "معاينة وضبط خيارات القياس والطباعة المباشرة",
+    href: "/print",
+    icon: Printer,
+    color: "from-sky-500 to-indigo-600",
     badge: null,
   },
   {
@@ -67,7 +85,10 @@ const tools = [
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-[#070b12] text-slate-100 font-sans selection:bg-purple-500 selection:text-white relative" dir="rtl">
+    <div
+      className="min-h-screen bg-[#070b12] text-slate-100 font-sans selection:bg-purple-500 selection:text-white relative"
+      dir="rtl"
+    >
       {/* خلفية جمالية خفيفة */}
       <div className="absolute top-0 right-1/4 w-[450px] h-[300px] bg-purple-600/10 blur-[130px] rounded-full pointer-events-none" />
 
@@ -101,8 +122,8 @@ export default function HomePage() {
           </p>
         </div>
 
-        {/* شبكة الأدوات - بحجم أيقونات وبطاقات مصغرة وأنيقة */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+        {/* شبكة الأدوات - 8 بطاقات متناسقة */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-3.5">
           {tools.map((tool, idx) => {
             const Icon = tool.icon;
             return (
@@ -126,7 +147,7 @@ export default function HomePage() {
                     <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
 
-                  {/* العنوان والوصف بحجم مدروس */}
+                  {/* العنوان والوصف */}
                   <h3 className="font-bold text-xs sm:text-sm text-white group-hover:text-purple-300 transition-colors">
                     {tool.title}
                   </h3>
@@ -139,7 +160,7 @@ export default function HomePage() {
           })}
         </div>
 
-        {/* مساحة إعلانية خفيفة في أسفل الرئيسية */}
+        {/* مساحة إعلانية في أسفل الرئيسية */}
         <div className="w-full bg-slate-900/40 border border-dashed border-slate-800/70 rounded-2xl p-3 flex flex-col items-center justify-center text-center min-h-[90px]">
           <span className="text-[9px] text-slate-500 font-semibold tracking-wider uppercase mb-0.5">
             إعلان / Sponsored Ad

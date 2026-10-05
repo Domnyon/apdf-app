@@ -1,174 +1,109 @@
 "use client";
 
-import React, { useState } from "react";
-import { Upload, FileText, CheckCircle2, AlertCircle, Loader2, Download, ArrowRight } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { Upload, FileText, CheckCircle, Download, X, ArrowRight, RefreshCw, AlertCircle } from "lucide-react";
 
 export default function PdfToWordPage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [prompt, setPrompt] = useState("");
+  const [file, setFile] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [resultText, setResultText] = useState("");
+  const [progress, setProgress] = useState(0);
+  const [progressStage, setProgressStage] = useState("");
+  const [convertedDocBlob, setConvertedDocBlob] = useState(null);
   const [error, setError] = useState("");
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      if (selectedFile.type === "application/pdf" || selectedFile.type.startsWith("image/")) {
-        setFile(selectedFile);
-        setError("");
-        setResultText("");
-      } else {
-        setError("يرجى رفع ملف بصيغة PDF أو صورة.");
-      }
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.async = true;
+      script.onload = () => {
+        const pdfjsLib = (window as any)["pdfjs-dist/build/pdf"];
+        if (pdfjsLib) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        }
+      };
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      validateAndSetFile(e.dataTransfer.files[0]);
     }
   };
 
-  const handleProcess = async () => {
-    if (!file) {
-      setError("الرجاء اختيار ملف أولاً.");
+  const handleFileInput = (e: React.ChangeEvent) => {
+    if (e.target.files && e.target.files[0]) {
+      validateAndSetFile(e.target.files[0]);
+    }
+  };
+
+  const validateAndSetFile = (selectedFile: File) => {
+    if (selectedFile.type === "application/pdf" || selectedFile.name.toLowerCase().endsWith(".pdf")) {
+      setFile(selectedFile);
+      setError("");
+      setConvertedDocBlob(null);
+      setProgress(0);
+    } else {
+      setError("يرجى اختيار ملف بصيغة PDF فقط.");
+    }
+  };
+
+  const removeFile = () => {
+    setFile(null);
+    setConvertedDocBlob(null);
+    setProgress(0);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const escapeHtml = (text: string) => {
+    return text.replace(/&/g, "&").replace(//g, ">");
+  };
+
+  const handleConvertLocally = async () => {
+    if (!file) return;
+
+    const pdfjsLib = (window as any)["pdfjs-dist/build/pdf"];
+    if (!pdfjsLib) {
+      setError("محرك التحويل قيد التجهيز في المتصفح، يرجى المحاولة بعد لحظات.");
       return;
     }
 
     setLoading(true);
     setError("");
+    setProgress(10);
+    setProgressStage("جاري قراءة صفحات المستند...");
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append(
-        "prompt",
-        prompt || "استخرج كامل النص بدقة وحوله إلى تنسيق وورد متناسق ومضبوط باللغة العربية"
-      );
+      const arrayBuffer = await file.arrayBuffer();
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const pdf = await loadingTask.promise;
+      const totalPages = pdf.numPages;
 
-      const res = await fetch("/api/gemini-doc", {
-        method: "POST",
-        body: formData,
-      });
+      let extractedHtmlPages = "";
 
-      const data = await res.json();
+      for (let i = 1; i <= totalPages; i++) {
+        setProgressStage(`معالجة وتنسيق الصفحة \({i} من\){totalPages}...`);
+        setProgress(Math.round((i / totalPages) * 85));
 
-      if (!res.ok) {
-        throw new Error(data.error || "فشل معالجة المستند.");
-      }
-
-      setResultText(data.resultText);
-    } catch (err: any) {
-      setError(err.message || "حدث خطأ أثناء معالجة المستند.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const downloadWordDocument = () => {
-    if (!resultText) return;
-
-    const htmlContent = 
-      "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>" +
-      "<head><meta charset='utf-8'><title>Document</title>" +
-      "<style>body { font-family: Arial, sans-serif; direction: rtl; text-align: right; }</style></head><body>" +
-      "<div style='white-space: pre-wrap; font-size: 14pt; line-height: 1.6;'>" +
-      resultText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") +
-      "</div></body></html>";
-
-    const blob = new Blob(["\ufeff", htmlContent], {
-      type: "application/msword;charset=utf-8",
-    });
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = (file?.name ? file.name.replace(/\.[^/.]+$/, "") : "document") + ".doc";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 py-10 px-4 sm:px-6">
-      <div className="max-w-3xl mx-auto space-y-6">
-        <Link href="/" className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition">
-          <ArrowRight className="w-4 h-4" />
-          العودة للرئيسية
-        </Link>
-
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl font-extrabold text-slate-800">تحويل PDF إلى Word (ذكاء اصطناعي)</h1>
-          <p className="text-sm text-slate-600">
-            استخراج فوري وفائق الدقة للنصوص وتنسيقها في مستند Word يدعم العربية بالكامل بواسطة Gemini AI.
-          </p>
-        </div>
-
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-          <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-xl p-8 cursor-pointer hover:bg-slate-50 transition">
-            <Upload className="w-10 h-10 text-blue-600 mb-2" />
-            <span className="font-medium text-slate-700">
-              {file ? file.name : "اضغط لاختيار ملف PDF أو اسحبه إلى هنا"}
-            </span>
-            <span className="text-xs text-slate-500 mt-1">يدعم ملفات PDF والصور</span>
-            <input type="file" accept=".pdf,image/*" onChange={handleFileChange} className="hidden" />
-          </label>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-700">تعليمات إضافية للذكاء الاصطناعي (اختياري):</label>
-            <input
-              type="text"
-              placeholder="مثال: لخص النقاط الأساسية فقط، أو احتفظ بالجداول كما هي"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {error && (
-            <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <button
-            onClick={handleProcess}
-            disabled={!file || loading}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>جاري استخراج ومعالجة النص بواسطة Gemini...</span>
-              </>
-            ) : (
-              <>
-                <FileText className="w-5 h-5" />
-                <span>بدء التحويل الآن</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {resultText && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2 text-emerald-600 font-semibold text-sm">
-                <CheckCircle2 className="w-5 h-5" />
-                <span>تم التحويل بنجاح!</span>
-              </div>
-              <button
-                onClick={downloadWordDocument}
-                className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition"
-              >
-                <Download className="w-4 h-4" />
-                تحميل كملف Word
-              </button>
-            </div>
-
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-800 font-mono whitespace-pre-wrap max-h-96 overflow-y-auto leading-relaxed text-right" dir="rtl">
-              {resultText}
-            </div>
-          </div>
-        )}
-      </div>
-    </main>
-  );
-}
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        
+        let lastY: number | null = null;
+        let pageHtml = `

@@ -28,14 +28,14 @@ export async function POST(req: NextRequest) {
     const base64Data = buffer.toString("base64");
     const mimeType = file.type || "application/pdf";
 
-    // تهيئة المكتبة باستخدام المفتاح الصريح
     const ai = new GoogleGenAI({ apiKey });
 
     const systemInstruction =
       "أنت خبير استخراج وتنسيق مستندات PDF. المطلوب منك استخراج وقراءة النصوص بدقة تامة من المستند المرفق، مع مراعاة اللغة العربية وترتيب الفقرات والعناوين، وتنفيذ التعديل أو الطلب المطلوب من المستخدم حرفياً. أرجع فقط النص النهائي المرتب دون مقدمات أو حشو.";
 
+    // استخدام النموذج المحدث والموصى به من جوجل
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.8-flash",
       contents: [
         {
           role: "user",

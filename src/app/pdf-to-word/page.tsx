@@ -2,7 +2,23 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Upload, FileText, CheckCircle, Download, X, ArrowRight, RefreshCw, AlertCircle } from "lucide-react";
+import { 
+  Upload, 
+  FileText, 
+  CheckCircle, 
+  Download, 
+  X, 
+  ArrowRight, 
+  RefreshCw, 
+  AlertCircle,
+  Bold,
+  Italic,
+  Underline,
+  AlignRight,
+  AlignCenter,
+  AlignLeft,
+  Edit3
+} from "lucide-react";
 
 export default function PdfToWordPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -10,10 +26,12 @@ export default function PdfToWordPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [progressStage, setProgressStage] = useState<string>("");
-  const [convertedDocBlob, setConvertedDocBlob] = useState<Blob | null>(null);
+  const [docContentHtml, setDocContentHtml] = useState<string>("");
+  const [isConverted, setIsConverted] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -58,7 +76,8 @@ export default function PdfToWordPage() {
     if (selectedFile.type === "application/pdf" || selectedFile.name.toLowerCase().endsWith(".pdf")) {
       setFile(selectedFile);
       setError("");
-      setConvertedDocBlob(null);
+      setDocContentHtml("");
+      setIsConverted(false);
       setProgress(0);
     } else {
       setError("يرجى اختيار ملف بصيغة PDF فقط.");
@@ -67,16 +86,14 @@ export default function PdfToWordPage() {
 
   const removeFile = () => {
     setFile(null);
-    setConvertedDocBlob(null);
+    setDocContentHtml("");
+    setIsConverted(false);
     setProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const escapeHtml = (text: string) => {
-    return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   };
 
   const handleConvertLocally = async () => {
@@ -109,7 +126,7 @@ export default function PdfToWordPage() {
         const textContent = await page.getTextContent();
         
         let lastY: number | null = null;
-        let pageHtml = '<div class="page" style="page-break-after: always; margin-bottom: 24px;">';
+        let pageHtml = '<div class="page-container" style="margin-bottom: 25px;">';
         let currentLine = "";
 
         textContent.items.forEach((item: any) => {
@@ -119,7 +136,7 @@ export default function PdfToWordPage() {
           const currentY = item.transform[5];
           if (lastY !== null && Math.abs(currentY - lastY) > 5) {
             if (currentLine.trim()) {
-              pageHtml += `<p style="margin: 4px 0; font-size: 12pt;">${escapeHtml(currentLine)}</p>`;
+              pageHtml += `<p style="margin: 6px 0; font-size: 11pt; line-height: 1.6;">${escapeHtml(currentLine)}</p>`;
             }
             currentLine = str;
           } else {
@@ -129,48 +146,17 @@ export default function PdfToWordPage() {
         });
 
         if (currentLine.trim()) {
-          pageHtml += `<p style="margin: 4px 0; font-size: 12pt;">${escapeHtml(currentLine)}</p>`;
+          pageHtml += `<p style="margin: 6px 0; font-size: 11pt; line-height: 1.6;">${escapeHtml(currentLine)}</p>`;
         }
 
         pageHtml += '</div>';
         extractedHtmlPages += pageHtml;
       }
 
-      setProgress(95);
-      setProgressStage("تجهيز ملف Word...");
-
-      const wordDocumentContent = `
-        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
-              xmlns:w='urn:schemas-microsoft-com:office:word' 
-              xmlns='http://www.w3.org/TR/REC-html40'>
-        <head>
-          <meta charset='utf-8'>
-          <title>${file.name}</title>
-          <style>
-            @page { size: A4; margin: 2.5cm 2cm; }
-            body {
-              font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-              direction: rtl;
-              text-align: right;
-              line-height: 1.6;
-              color: #111;
-            }
-            p { margin: 6px 0; }
-          </style>
-        </head>
-        <body>
-          ${extractedHtmlPages || "<p>لم يتم العثور على نصوص قابلة للاستخراج في هذا المستند.</p>"}
-        </body>
-        </html>
-      `;
-
-      const blob = new Blob(["\ufeff", wordDocumentContent], {
-        type: "application/msword;charset=utf-8",
-      });
-
-      setConvertedDocBlob(blob);
       setProgress(100);
       setProgressStage("اكتمل التحويل بنجاح!");
+      setDocContentHtml(extractedHtmlPages || "<p>اكتب أو عدل محتوى المستند هنا...</p>");
+      setIsConverted(true);
     } catch (err: any) {
       console.error(err);
       setError("تعذر تحويل الملف محلياً. تأكد أن الملف غير معطوب.");
@@ -179,9 +165,48 @@ export default function PdfToWordPage() {
     }
   };
 
-  const triggerDownload = () => {
-    if (!convertedDocBlob) return;
-    const url = URL.createObjectURL(convertedDocBlob);
+  // أدوات التنسيق السريع في الورقة التفاعلية
+  const applyFormat = (command: string, value: string | undefined = undefined) => {
+    document.execCommand(command, false, value);
+    if (editorRef.current) {
+      setDocContentHtml(editorRef.current.innerHTML);
+    }
+  };
+
+  // توليد وتحميل ملف Word بعد التعديلات المباشرة
+  const downloadWordDocument = () => {
+    const finalContent = editorRef.current ? editorRef.current.innerHTML : docContentHtml;
+
+    const wordDocumentContent = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+            xmlns:w='urn:schemas-microsoft-com:office:word' 
+            xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>${file?.name || "document"}</title>
+        <style>
+          @page { size: A4; margin: 2.5cm 2cm; }
+          body {
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            direction: rtl;
+            text-align: right;
+            line-height: 1.6;
+            color: #111;
+          }
+          p { margin: 6px 0; }
+        </style>
+      </head>
+      <body>
+        ${finalContent}
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob(["\ufeff", wordDocumentContent], {
+      type: "application/msword;charset=utf-8",
+    });
+
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = (file?.name ? file.name.replace(/\.[^/.]+$/, "") : "converted") + ".doc";
@@ -193,6 +218,8 @@ export default function PdfToWordPage() {
 
   return (
     <div className="min-h-screen bg-[#F5F5FA] flex flex-col font-sans" dir="rtl">
+      
+      {/* شريط علوي */}
       <header className="bg-white border-b border-gray-200 py-3.5 px-6 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-red-600 transition">
@@ -200,21 +227,26 @@ export default function PdfToWordPage() {
             العودة لجميع الأدوات
           </Link>
           <span className="text-xs font-bold uppercase tracking-wider text-red-600 bg-red-50 px-2.5 py-1 rounded-full">
-            تحويل فوري بدون حدود
+            معاينة وتعديل مباشر
           </span>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8">
-        <div className="w-full max-w-4xl text-center space-y-3 mb-8">
-          <h1 className="text-3xl sm:text-4xl font-black text-[#161616]">
-            تحويل PDF إلى WORD
-          </h1>
-          <p className="text-base text-gray-600 max-w-xl mx-auto">
-            حوّل ملفات PDF إلى مستندات Word قابلة للتعديل مباشرة في المتصفح وبدون انتظار.
-          </p>
-        </div>
+        
+        {/* عنوان الصفحة */}
+        {!isConverted && (
+          <div className="w-full max-w-4xl text-center space-y-3 mb-8">
+            <h1 className="text-3xl sm:text-4xl font-black text-[#161616]">
+              تحويل PDF إلى WORD
+            </h1>
+            <p className="text-base text-gray-600 max-w-xl mx-auto">
+              حوّل ملفاتك إلى مستندات Word مع إمكانية مراجعتها والتعديل المباشر عليها قبل الحفظ.
+            </p>
+          </div>
+        )}
 
+        {/* 1. رفع الملف */}
         {!file && (
           <div 
             onDragOver={handleDragOver}
@@ -246,7 +278,8 @@ export default function PdfToWordPage() {
           </div>
         )}
 
-        {file && !convertedDocBlob && (
+        {/* 2. بطاقة الملف وزر التحويل */}
+        {file && !isConverted && (
           <div className="w-full max-w-2xl bg-white border border-gray-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
             <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl p-4">
               <div className="flex items-center gap-3 overflow-hidden">
@@ -302,55 +335,129 @@ export default function PdfToWordPage() {
               {loading ? (
                 <>
                   <RefreshCw className="w-5 h-5 animate-spin" />
-                  <span>جاري التحويل الفوري...</span>
+                  <span>جاري تحويل ومعالجة الملف...</span>
                 </>
               ) : (
-                <span>التحويل إلى WORD الآن</span>
+                <span>التحويل إلى WORD والفتح للتعديل</span>
               )}
             </button>
           </div>
         )}
 
-        {convertedDocBlob && (
-          <div className="w-full max-w-xl bg-white border border-gray-200 rounded-3xl p-8 sm:p-12 text-center shadow-sm space-y-6">
-            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle className="w-10 h-10" />
+        {/* 3. شاشة المعاينة المصغرة والتعديل المباشر قبل التنزيل */}
+        {isConverted && (
+          <div className="w-full max-w-4xl space-y-5 animate-in fade-in duration-300">
+            
+            {/* شريط الإجراءات والتحميل العلوي */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
+                  <CheckCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-800 flex items-center gap-1.5">
+                    تم تجهيز المستند!
+                    <span className="text-xs font-normal text-blue-600 flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded-md">
+                      <Edit3 className="w-3.5 h-3.5" />
+                      يمكنك النقر والتعديل داخل الصفحة مباشرة
+                    </span>
+                  </h2>
+                  <p className="text-xs text-gray-500">عدل أي نص داخل الورقة بالأسفل، ثم اضغط حفظ.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={removeFile}
+                  className="px-4 py-3 text-sm text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium transition"
+                >
+                  ملف آخر
+                </button>
+                <button
+                  onClick={downloadWordDocument}
+                  className="flex-1 sm:flex-none px-6 py-3 bg-[#E5322D] hover:bg-[#c92520] active:scale-95 text-white font-bold text-base rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2"
+                >
+                  <Download className="w-5 h-5 stroke-[2.5]" />
+                  <span>تحميل ملف WORD</span>
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <h2 className="text-2xl font-black text-gray-900">
-                تم تحويل المستند بنجاح!
-              </h2>
-              <p className="text-sm text-gray-500">
-                الملف جاهز للتحميل والتعديل في Microsoft Word.
-              </p>
+            {/* ورقة المستند (محاكاة صفحة Word A4 تفاعلية قابلة للتحرير) */}
+            <div className="bg-[#4b5563] p-4 sm:p-8 rounded-2xl shadow-inner flex flex-col items-center">
+              
+              {/* شريط أدوات التنسيق السريع المكتبي */}
+              <div className="bg-white/95 backdrop-blur border border-gray-200 rounded-xl p-1.5 mb-4 shadow-md flex items-center gap-1 flex-wrap justify-center text-gray-700">
+                <button 
+                  onClick={() => applyFormat("bold")} 
+                  className="p-2 hover:bg-gray-100 rounded-lg transition" 
+                  title="عريض (Bold)"
+                >
+                  <Bold className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => applyFormat("italic")} 
+                  className="p-2 hover:bg-gray-100 rounded-lg transition" 
+                  title="مائل (Italic)"
+                >
+                  <Italic className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => applyFormat("underline")} 
+                  className="p-2 hover:bg-gray-100 rounded-lg transition" 
+                  title="تسطير (Underline)"
+                >
+                  <Underline className="w-4 h-4" />
+                </button>
+
+                <div className="w-[1px] h-5 bg-gray-300 mx-1"></div>
+
+                <button 
+                  onClick={() => applyFormat("justifyRight")} 
+                  className="p-2 hover:bg-gray-100 rounded-lg transition" 
+                  title="محاذاة لليمين"
+                >
+                  <AlignRight className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => applyFormat("justifyCenter")} 
+                  className="p-2 hover:bg-gray-100 rounded-lg transition" 
+                  title="محاذاة للوسط"
+                >
+                  <AlignCenter className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => applyFormat("justifyLeft")} 
+                  className="p-2 hover:bg-gray-100 rounded-lg transition" 
+                  title="محاذاة لليسار"
+                >
+                  <AlignLeft className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* صفحة الـ Word A4 المصغرة والتفاعلية */}
+              <div 
+                className="w-full max-w-2xl bg-white min-h-[750px] p-8 sm:p-14 shadow-2xl rounded-sm border border-gray-200 outline-none focus:ring-2 focus:ring-red-400 text-gray-900 leading-relaxed overflow-y-auto cursor-text"
+                contentEditable
+                suppressContentEditableWarning
+                ref={editorRef}
+                dangerouslySetInnerHTML={{ __html: docContentHtml }}
+                onInput={(e) => setDocContentHtml(e.currentTarget.innerHTML)}
+                style={{
+                  fontFamily: "'Segoe UI', Tahoma, Arial, sans-serif",
+                  direction: "rtl",
+                  textAlign: "right"
+                }}
+              />
             </div>
 
-            <div className="pt-2">
-              <button
-                onClick={triggerDownload}
-                className="w-full sm:w-auto px-10 py-5 bg-[#E5322D] hover:bg-[#c92520] active:scale-95 text-white font-black text-xl rounded-2xl shadow-xl hover:shadow-2xl transition flex items-center justify-center gap-3 mx-auto"
-              >
-                <Download className="w-6 h-6 stroke-[2.5]" />
-                <span>تحميل ملف WORD</span>
-              </button>
-            </div>
-
-            <div className="pt-4 border-t border-gray-100 flex justify-center">
-              <button
-                onClick={removeFile}
-                className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition font-medium"
-              >
-                <RefreshCw className="w-4 h-4" />
-                تحويل ملف آخر
-              </button>
-            </div>
           </div>
         )}
+
       </main>
 
       <footer className="py-4 text-center text-xs text-gray-400">
-        © {new Date().getFullYear()} apdf-app — تحويل فوري محلي ومجاني بالكامل
+        © {new Date().getFullYear()} apdf-app — معاينة فورية وتحرير مباشر لملفات المستندات
       </footer>
     </div>
   );

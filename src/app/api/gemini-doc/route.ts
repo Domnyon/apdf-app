@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 
-const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+// رفع مدة تنفيذ الدالة في Vercel لتجنب قطع الاتصال
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +11,7 @@ export async function POST(req: NextRequest) {
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "إعدادات الربط غير مكتملة." },
+        { error: "مفتاح GEMINI_API_KEY غير معرّف في Vercel." },
         { status: 500 }
       );
     }
@@ -20,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json(
-        { error: "لم يتم تزويد أي مستند للمعالجة." },
+        { error: "لم يتم استلام أي ملف." },
         { status: 400 }
       );
     }
@@ -33,85 +35,50 @@ export async function POST(req: NextRequest) {
     const ai = new GoogleGenAI({ apiKey });
 
     const systemInstruction = `
-أنت خبير فائق الدقة في قراءة المستندات واستخراجها وتحويلها إلى مستندات Word احترافية.
-المهمة:
-قم بتحويل مستند الـ PDF المرفق إلى كود HTML نظيف مخصص للعرض في Microsoft Word مع الحفاظ الكامل على التنسيقات:
-1. الجداول: أنشئ وسوم <table> مع حدود واضحة (border="1" style="border-collapse: collapse; width: 100%;") وتنسيق الخلايا <th> و <td>.
-2. العناوين: استخدم <h1> و <h2> و <h3> بنفس تسلسل الـ PDF.
-3. التنسيقات: حافظ على الكلمات العريضة <b>، والمائلة <i>، والقوائم <ul> و <ol>.
-4. الفقرات: استخدم <p> مع اتجاه الكتابة من اليمين لليسار (RTL) للنصوص العربية.
-
-أخرج فقط وسوم محتوى الـ HTML الداخلي دون وسوم <html> أو <body> أو علامات ماركداون.
-${customPrompt ? `تعليمات المستخدم: ${customPrompt}` : ""}
+أنت أداة متخصصة في تحويل مستندات PDF إلى Word. 
+المطلوب: استخراج كامل محتوى المستند بدقة بصيغة HTML جاهزة للعرض داخل ملف Word.
+- أنشئ جداول <table> واضحة ومغلقة.
+- حافظ على العناوين <h1> و <h2> والفقرات <p>.
+- اجعل الاتجاه من اليمين لليسار (RTL) للنصوص العربية.
+- لا تضع وسوم <html> أو <body>، فقط المحتوى الداخلي المباشر، ولا تضع علامات ماركداون.
+${customPrompt ? `ملاحظة: ${customPrompt}` : ""}
 `;
 
-    // استخدام النماذج المعتمدة الحالية من جوجل بالترتيب
-    // نبدأ بـ gemini-3.5-flash-lite لأنه الأسرع استجابة والأقل ازدحاماً
-    const candidateModels = [
-      "gemini-3.5-flash-lite",
-      "gemini-3.8-flash"
-    ];
-
-    let htmlOutput = "";
-    let lastError: any = null;
-
-    for (const modelName of candidateModels) {
-      let attempts = 0;
-      const maxRetries = 2;
-
-      while (attempts < maxRetries) {
-        try {
-          attempts++;
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  { text: systemInstruction },
-                  {
-                    inlineData: {
-                      mimeType,
-                      data: base64Data,
-                    },
-                  },
-                ],
+    // طلب مباشر وسريع دون دوران معقد لتجنب التايم آوت
+    const response = await ai.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: systemInstruction },
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
               },
-            ],
-          });
+            },
+          ],
+        },
+      ],
+    });
 
-          if (response.text) {
-            htmlOutput = response.text;
-            break;
-          }
-        } catch (err: any) {
-          lastError = err;
-          // إذا كان خطأ ازدحام ننتظر ثانية ونجرب
-          if (err?.status === 503 || err?.message?.includes("high demand") || err?.message?.includes("UNAVAILABLE")) {
-            await delay(1200);
-          } else {
-            // إذا كان الخطأ عدم توفر النموذج نتجاوزه فوراً
-            break;
-          }
-        }
-      }
-
-      if (htmlOutput) {
-        break; // نجحت العملية، نخرج فوراً
-      }
-    }
+    let htmlOutput = response.text || "";
+    htmlOutput = htmlOutput.replace(/^```html\s*/i, "").replace(/```$/i, "").trim();
 
     if (!htmlOutput) {
-      throw lastError || new Error("الخوادم تشهد ضغطاً مؤقتاً.");
+      return NextResponse.json(
+        { error: "لم يتمكن النموذج من استخراج نصوص من الملف." },
+        { status: 500 }
+      );
     }
-
-    htmlOutput = htmlOutput.replace(/^```html\s*/i, "").replace(/```$/i, "").trim();
 
     return NextResponse.json({ docHtml: htmlOutput });
   } catch (error: any) {
-    console.error("Gemini Conversion Error:", error);
+    console.error("Gemini Route Error:", error);
+    // إرجاع رسالة الخطأ الحقيقية القادمة من جوجل لمعرفة سبب التعطل فوراً
     return NextResponse.json(
-      { error: "تعذر معالجة الملف، يرجى إعادة المحاولة." },
+      { error: error?.message || error?.toString() || "حدث خطأ أثناء معالجة المستند." },
       { status: 500 }
     );
   }

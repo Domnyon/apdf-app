@@ -34,7 +34,6 @@ export default function PdfToWordPage() {
   const [error, setError] = useState("");
 
   const fileInputRef = useRef(null);
-  // مراجع منفصلة لكل ورقة لتعديلها بحرية دون أي تداخل
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
@@ -98,8 +97,9 @@ export default function PdfToWordPage() {
 
   const escapeHtml = (text: string) => {
     return text
-      .replace(/&/g, "&")
-      .replace(//g, ">");
+      .split("&").join("&")
+      .split("<").join("<")
+      .split(">").join(">");
   };
 
   const fixArabicString = (str: string): string => {
@@ -115,7 +115,6 @@ export default function PdfToWordPage() {
     return tokens.join(" ");
   };
 
-  // 1. تفكيك الصفحات في الخلفية وعزل كل ورقة على حدة
   const handleConvertLocally = async () => {
     if (!file) return;
 
@@ -128,7 +127,7 @@ export default function PdfToWordPage() {
     setLoading(true);
     setError("");
     setProgress(10);
-    setProgressStage("جاري فصل صفحات الـ PDF إلى ملفات مستقلة...");
+    setProgressStage("جاري تفكيك صفحات الـ PDF وعزلها...");
 
     try {
       const arrayBuffer = await file.arrayBuffer();

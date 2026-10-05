@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 
+const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -43,62 +45,73 @@ export async function POST(req: NextRequest) {
 ${customPrompt ? `تعليمات المستخدم: ${customPrompt}` : ""}
 `;
 
-    // قائمة نماذج مرتبة حسب السرعة والاستقرار للتبديل الفوري بينها
+    // استخدام النماذج المعتمدة الحالية من جوجل بالترتيب
+    // نبدأ بـ gemini-3.5-flash-lite لأنه الأسرع استجابة والأقل ازدحاماً
     const candidateModels = [
-      "gemini-2.5-flash",
-      "gemini-2.0-flash",
-      "gemini-2.5-pro",
+      "gemini-3.5-flash-lite",
       "gemini-3.8-flash"
     ];
 
     let htmlOutput = "";
     let lastError: any = null;
 
-    // المرور السريع على النماذج فوراً في حال انشغال أي نموذج
     for (const modelName of candidateModels) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: systemInstruction },
-                {
-                  inlineData: {
-                    mimeType,
-                    data: base64Data,
-                  },
-                },
-              ],
-            },
-          ],
-        });
+      let attempts = 0;
+      const maxRetries = 2;
 
-        if (response.text) {
-          htmlOutput = response.text;
-          break; // نجح أحد النماذج، نخرج فوراً ونرسل النتيجة
+      while (attempts < maxRetries) {
+        try {
+          attempts++;
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  { text: systemInstruction },
+                  {
+                    inlineData: {
+                      mimeType,
+                      data: base64Data,
+                    },
+                  },
+                ],
+              },
+            ],
+          });
+
+          if (response.text) {
+            htmlOutput = response.text;
+            break;
+          }
+        } catch (err: any) {
+          lastError = err;
+          // إذا كان خطأ ازدحام ننتظر ثانية ونجرب
+          if (err?.status === 503 || err?.message?.includes("high demand") || err?.message?.includes("UNAVAILABLE")) {
+            await delay(1200);
+          } else {
+            // إذا كان الخطأ عدم توفر النموذج نتجاوزه فوراً
+            break;
+          }
         }
-      } catch (err: any) {
-        lastError = err;
-        console.warn(`Model ${modelName} failed or busy, switching to next model immediately...`);
-        // الانتقال الفوري للنموذج التالي في جزء من الثانية دون أي تأخير
-        continue;
+      }
+
+      if (htmlOutput) {
+        break; // نجحت العملية، نخرج فوراً
       }
     }
 
     if (!htmlOutput) {
-      throw lastError || new Error("جميع النماذج مشغولة حالياً.");
+      throw lastError || new Error("الخوادم تشهد ضغطاً مؤقتاً.");
     }
 
-    // تنظيف المخرجات من أي علامات كود
     htmlOutput = htmlOutput.replace(/^```html\s*/i, "").replace(/```$/i, "").trim();
 
     return NextResponse.json({ docHtml: htmlOutput });
   } catch (error: any) {
     console.error("Gemini Conversion Error:", error);
     return NextResponse.json(
-      { error: "تعذر معالجة الملف بسبب ضغط لحظي، يرجى النقر مرة أخرى." },
+      { error: "تعذر معالجة الملف، يرجى إعادة المحاولة." },
       { status: 500 }
     );
   }

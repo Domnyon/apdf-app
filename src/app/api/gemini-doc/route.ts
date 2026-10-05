@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-// ضبط إعدادات Next.js لقبول أحجام ملفات أكبر
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: "10mb",
-    },
-  },
-};
-
 export async function POST(req: NextRequest) {
   try {
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "مفتاح GEMINI_API_KEY غير موجود في متغيرات بيئة Vercel. يرجى إضافته في إعدادات المشروع ثم عمل Redeploy." },
+        { status: 500 }
+      );
+    }
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
-    const prompt = (formData.get("prompt") as string) || "حول كامل المستند إلى Word بتنسيق مرتب واحتفظ بالنصوص كما هي باللغة العربية";
+    const prompt = (formData.get("prompt") as string) || "استخرج كامل النص بدقة وحوله إلى تنسيق وورد متناسق ومضبوط باللغة العربية";
 
     if (!file) {
       return NextResponse.json(
@@ -25,17 +23,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // تحويل الملف إلى Buffer ثم Base64
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const base64Data = buffer.toString("base64");
     const mimeType = file.type || "application/pdf";
 
-    const systemInstruction = `
-أنت خبير استخراج وتنسيق مستندات PDF. 
-المطلوب منك استخراج وقراءة النصوص بدقة تامة من المستند المرفق، مع مراعاة اللغة العربية وترتيب الفقرات والعناوين، وتنفيذ التعديل أو الطلب المطلوب من المستخدم حرفياً.
-أرجع فقط النص النهائي المرتب دون مقدمات أو حشو.
-    `;
+    // تهيئة المكتبة باستخدام المفتاح الصريح
+    const ai = new GoogleGenAI({ apiKey });
+
+    const systemInstruction =
+      "أنت خبير استخراج وتنسيق مستندات PDF. المطلوب منك استخراج وقراءة النصوص بدقة تامة من المستند المرفق، مع مراعاة اللغة العربية وترتيب الفقرات والعناوين، وتنفيذ التعديل أو الطلب المطلوب من المستخدم حرفياً. أرجع فقط النص النهائي المرتب دون مقدمات أو حشو.";
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -43,7 +40,7 @@ export async function POST(req: NextRequest) {
         {
           role: "user",
           parts: [
-            { text: `\({systemInstruction}\n\nطلب المستخدم:\){prompt}` },
+            { text: `${systemInstruction}\n\nطلب المستخدم: ${prompt}` },
             {
               inlineData: {
                 mimeType,

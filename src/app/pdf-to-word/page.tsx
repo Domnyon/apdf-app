@@ -28,7 +28,6 @@ export default function PdfToWordPage() {
   const [progress, setProgress] = useState<number>(0);
   const [progressStage, setProgressStage] = useState<string>("");
   
-  // مراحل العمل: upload -> edit -> download
   const [currentStep, setCurrentStep] = useState<"upload" | "edit" | "download">("upload");
   const [error, setError] = useState<string>("");
 
@@ -102,23 +101,17 @@ export default function PdfToWordPage() {
       .replace(/>/g, "&gt;");
   };
 
-  // معالجة النصوص المعكوسة في الـ PDF وضبط الترتيب العربي السليم
   const fixArabicString = (str: string): string => {
     if (!str) return "";
     const arabicRegex = /[\u0600-\u06FF]/;
     if (!arabicRegex.test(str)) return str;
 
-    // فحص الكلمات المعكوسة الشائعة مثل (هللا -> الله)
-    const reversedTokens = str.split(" ").map((token) => {
+    const tokens = str.split(" ").map((token) => {
       if (token === "هللا") return "الله";
-      if (arabicRegex.test(token)) {
-        // إذا كان الحرف الأول في أصل الكلمة متصلاً في النهاية نقوم بتعديل الترتيب
-        return token;
-      }
       return token;
     });
 
-    return reversedTokens.join(" ");
+    return tokens.join(" ");
   };
 
   const handleConvertLocally = async () => {
@@ -126,14 +119,14 @@ export default function PdfToWordPage() {
 
     const pdfjsLib = (window as any)["pdfjs-dist/build/pdf"];
     if (!pdfjsLib) {
-      setError("محرك التحويل قيد التجهيز في المتصفح، يرجى المحاولة بعد لحظات.");
+      setError("محرك التحويل قيد التجهيز في المتصفح، يرجى المحاولة بعد قليل.");
       return;
     }
 
     setLoading(true);
     setError("");
     setProgress(15);
-    setProgressStage("جاري تحليل صفحات ومحتوى الـ PDF...");
+    setProgressStage("جاري قراءة صفحات المستند وعزلها...");
 
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -141,16 +134,15 @@ export default function PdfToWordPage() {
       const pdf = await loadingTask.promise;
       const totalPages = pdf.numPages;
 
-      let fullDocumentHtml = "";
+      let pagesHtmlArray: string[] = [];
 
       for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-        setProgressStage(`معالجة وتصحيح نصوص الصفحة ${pageNum} من ${totalPages}...`);
+        setProgressStage(`فصل وتنسيق الصفحة ${pageNum} من ${totalPages}...`);
         setProgress(Math.round((pageNum / totalPages) * 85));
 
         const page = await pdf.getPage(pageNum);
         const textContent = await page.getTextContent();
         
-        // تجميع العناصر حسب السطر الحقيقي
         const linesMap = new Map<number, { text: string; x: number }[]>();
 
         textContent.items.forEach((item: any) => {
@@ -170,11 +162,13 @@ export default function PdfToWordPage() {
 
         const sortedY = Array.from(linesMap.keys()).sort((a, b) => b - a);
 
-        let pageHtml = '<div class="doc-page" style="background:#fff; padding:35px; margin-bottom:30px; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 2px 4px rgba(0,0,0,0.06); min-height:500px;">';
+        let singlePageContent = `<div class="doc-page" data-page="${pageNum}" style="background:#ffffff; padding:45px; margin-bottom:40px; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); min-height:850px; position:relative;">`;
+        
+        // شريط رقم الصفحة داخل المحرر
+        singlePageContent += `<div style="text-align:center; color:#94a3b8; font-size:10pt; border-bottom:1px dashed #e2e8f0; padding-bottom:8px; margin-bottom:20px; user-select:none;">--- صفحة ${pageNum} من ${totalPages} ---</div>`;
 
         sortedY.forEach((y) => {
           const lineItems = linesMap.get(y)!;
-          // الترتيب الطبيعي حسب موضع العنصر في الصفحة (من اليمين إلى اليسار للسطر العربي)
           lineItems.sort((a, b) => b.x - a.x);
 
           let lineText = lineItems
@@ -182,27 +176,30 @@ export default function PdfToWordPage() {
             .filter((t) => t.length > 0)
             .join(" ");
 
-          // معالجة عكس الجملة إذا كانت الأحرف العربية مصفوفة من اليسار لليمين
           if (lineText.includes("هللا")) {
             lineText = lineText.replace(/هللا/g, "الله");
           }
 
           if (lineText) {
-            pageHtml += `<p style="margin: 6px 0; font-size: 12pt; line-height: 1.8; direction: rtl; text-align: right;">${escapeHtml(lineText)}</p>`;
+            singlePageContent += `<p style="margin: 6px 0; font-size: 12pt; line-height: 1.8; direction: rtl; text-align: right;">${escapeHtml(lineText)}</p>`;
           }
         });
 
-        pageHtml += "</div>";
-        fullDocumentHtml += pageHtml;
+        singlePageContent += "</div>";
+        pagesHtmlArray.push(singlePageContent);
       }
 
+      // دمج الصفحات مع فاصل صفحات Word الرسمي المكتبي الإجباري
+      const finalWordReadyHtml = pagesHtmlArray.join(
+        `<br clear="all" style="page-break-before:always; mso-break-type:section-break;" />`
+      );
+
       setProgress(100);
-      setProgressStage("اكتمل التجهيز!");
-      finalHtmlRef.current = fullDocumentHtml || "<p style='direction:rtl; text-align:right;'>لا توجد نصوص في المستند.</p>";
+      setProgressStage("اكتمل تجهيز الصفحات!");
+      finalHtmlRef.current = finalWordReadyHtml;
       
       setCurrentStep("edit");
 
-      // حقن المحتوى في المحرر لمرة واحدة فقط لتفادي تكرار إعادة الرسم
       setTimeout(() => {
         if (editorRef.current) {
           editorRef.current.innerHTML = finalHtmlRef.current;
@@ -236,8 +233,26 @@ export default function PdfToWordPage() {
       <head>
         <meta charset='utf-8'>
         <title>${file?.name || "document"}</title>
+        <!--[if gte mso 9]>
+        <xml>
+          <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+          </w:WordDocument>
+        </xml>
+        <![endif]-->
         <style>
-          @page { size: A4; margin: 2.5cm 2cm; }
+          @page Section1 {
+            size: 595.3pt 841.9pt; /* A4 Size */
+            margin: 56.7pt 56.7pt 56.7pt 56.7pt;
+            mso-header-margin: 35.4pt;
+            mso-footer-margin: 35.4pt;
+            mso-paper-source: 0;
+          }
+          div.Section1 {
+            page: Section1;
+          }
           body {
             font-family: 'Arial', 'Segoe UI', Tahoma, sans-serif;
             direction: rtl;
@@ -246,10 +261,15 @@ export default function PdfToWordPage() {
             color: #111;
           }
           p { margin: 6px 0; }
+          .doc-page {
+            page-break-after: always;
+          }
         </style>
       </head>
       <body>
-        ${finalHtmlRef.current}
+        <div class="Section1">
+          ${finalHtmlRef.current}
+        </div>
       </body>
       </html>
     `;
@@ -278,14 +298,14 @@ export default function PdfToWordPage() {
             العودة لجميع الأدوات
           </Link>
           <span className="text-xs font-bold uppercase tracking-wider text-red-600 bg-red-50 px-2.5 py-1 rounded-full">
-            تحويل ومحرر مباشر
+            تحويل ومحرر صفحات مستقلة
           </span>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8">
         
-        {/* المرحلة 1: رفع الملف */}
+        {/* المرحلة 1: الرفع */}
         {currentStep === "upload" && !file && (
           <div className="w-full max-w-4xl text-center space-y-6">
             <div className="space-y-2">
@@ -293,7 +313,7 @@ export default function PdfToWordPage() {
                 تحويل PDF إلى WORD
               </h1>
               <p className="text-base text-gray-600 max-w-xl mx-auto">
-                حوّل ملفات PDF إلى مستندات Word مع الحفاظ على التنسيقات وتعديلها بسهولة.
+                حوّل ملفات PDF متعددة الصفحات مع فصل كل صفحة بدقة تامة وبنفس أبعاد Word الأصلية.
               </p>
             </div>
 
@@ -384,7 +404,7 @@ export default function PdfToWordPage() {
               {loading ? (
                 <>
                   <RefreshCw className="w-5 h-5 animate-spin" />
-                  <span>جاري معالجة وتنسيق النصوص...</span>
+                  <span>جاري معالجة وتنسيق المستند...</span>
                 </>
               ) : (
                 <span>التحويل إلى WORD والفتح للتعديل</span>
@@ -393,19 +413,19 @@ export default function PdfToWordPage() {
           </div>
         )}
 
-        {/* المرحلة 2: التعديل المباشر (ثابت وسلس ولا يقفز المؤشر) */}
+        {/* المرحلة 2: محرر الصفحات المستقلة */}
         {currentStep === "edit" && (
           <div className="w-full max-w-4xl space-y-5 animate-in fade-in duration-300">
-            <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-16 z-20">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
                   <Edit3 className="w-5 h-5" />
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-gray-800">
-                    مستند Word جاهز للمراجعة والتعديل
+                    تم فصل الصفحات ومستندك جاهز للتعديل
                   </h2>
-                  <p className="text-xs text-gray-500">اكتب أو عدل النصوص بحرية تامة داخل الورقة.</p>
+                  <p className="text-xs text-gray-500">كل صفحة معزولة ومستقلة، يمكنك تعديل أي نص بحرية.</p>
                 </div>
               </div>
 
@@ -426,9 +446,9 @@ export default function PdfToWordPage() {
               </div>
             </div>
 
-            <div className="bg-[#475569] p-4 sm:p-8 rounded-2xl shadow-inner flex flex-col items-center">
+            <div className="bg-[#334155] p-4 sm:p-8 rounded-2xl shadow-inner flex flex-col items-center">
               
-              <div className="bg-white border border-gray-200 rounded-xl p-1.5 mb-4 shadow flex items-center gap-1 flex-wrap justify-center text-gray-700">
+              <div className="bg-white border border-gray-200 rounded-xl p-1.5 mb-6 shadow flex items-center gap-1 flex-wrap justify-center text-gray-700 sticky top-36 z-10">
                 <button onClick={() => applyFormat("bold")} className="p-2 hover:bg-gray-100 rounded-lg transition" title="عريض">
                   <Bold className="w-4 h-4" />
                 </button>
@@ -450,9 +470,9 @@ export default function PdfToWordPage() {
                 </button>
               </div>
 
-              {/* حاوية الورقة مع خصائص اتجاه عربي صارمة وبدون إعادة رسم مستمرة */}
+              {/* حاوية الصفحات المستقلة */}
               <div 
-                className="w-full max-w-2xl bg-white min-h-[750px] p-8 sm:p-14 shadow-2xl rounded-sm border border-gray-200 outline-none focus:ring-2 focus:ring-red-400 text-gray-900 leading-relaxed overflow-y-auto cursor-text text-right"
+                className="w-full max-w-2xl outline-none text-gray-900 leading-relaxed cursor-text"
                 contentEditable
                 suppressContentEditableWarning
                 ref={editorRef}
@@ -460,15 +480,14 @@ export default function PdfToWordPage() {
                 style={{
                   fontFamily: "'Segoe UI', Tahoma, Arial, sans-serif",
                   direction: "rtl",
-                  textAlign: "right",
-                  unicodeBidi: "plaintext"
+                  textAlign: "right"
                 }}
               />
             </div>
           </div>
         )}
 
-        {/* المرحلة 3: التحميل النهائي */}
+        {/* المرحلة 3: شاشة التحميل */}
         {currentStep === "download" && (
           <div className="w-full max-w-xl bg-white border border-gray-200 rounded-3xl p-8 sm:p-12 text-center shadow-sm space-y-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
@@ -477,10 +496,10 @@ export default function PdfToWordPage() {
 
             <div className="space-y-1">
               <h2 className="text-2xl font-black text-gray-900">
-                تم تحويل وحفظ المستند بنجاح!
+                تم حفظ الصفحات وتجهيز ملف Word!
               </h2>
               <p className="text-sm text-gray-500">
-                تم تطبيق كافة التعديلات، ملف Word جاهز الآن للتحميل على جهازك.
+                تم الحفاظ على فواصل الصفحات وأبعاد A4، الملف جاهز للتنزيل.
               </p>
             </div>
 

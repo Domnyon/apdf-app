@@ -134,7 +134,7 @@ export default function PdfToWordPage() {
       const pdf = await loadingTask.promise;
       const totalPages = pdf.numPages;
 
-      let pagesHtmlArray: string[] = [];
+      let assembledDocumentHtml = "";
 
       for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
         setProgressStage(`فصل وتنسيق الصفحة ${pageNum} من ${totalPages}...`);
@@ -162,9 +162,15 @@ export default function PdfToWordPage() {
 
         const sortedY = Array.from(linesMap.keys()).sort((a, b) => b - a);
 
-        let singlePageContent = `<div class="doc-page" data-page="${pageNum}" style="background:#ffffff; padding:45px; margin-bottom:40px; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); min-height:850px; position:relative;">`;
+        // فاصل صفحات إجباري صارم لبرنامج Word لكل صفحة بعد الأولى
+        let pageHeaderBreak = "";
+        if (pageNum > 1) {
+          pageHeaderBreak = `<br clear="all" style="page-break-before:always; mso-break-type:section-break;" />`;
+        }
+
+        let singlePageContent = `${pageHeaderBreak}<div class="doc-page" data-page="${pageNum}" style="background:#ffffff; padding:45px; margin-bottom:40px; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); min-height:850px; position:relative; page-break-after:always; page-break-inside:avoid;">`;
         
-        // شريط رقم الصفحة داخل المحرر
+        // شريط رقم الصفحة
         singlePageContent += `<div style="text-align:center; color:#94a3b8; font-size:10pt; border-bottom:1px dashed #e2e8f0; padding-bottom:8px; margin-bottom:20px; user-select:none;">--- صفحة ${pageNum} من ${totalPages} ---</div>`;
 
         sortedY.forEach((y) => {
@@ -186,17 +192,12 @@ export default function PdfToWordPage() {
         });
 
         singlePageContent += "</div>";
-        pagesHtmlArray.push(singlePageContent);
+        assembledDocumentHtml += singlePageContent;
       }
-
-      // دمج الصفحات مع فاصل صفحات Word الرسمي المكتبي الإجباري
-      const finalWordReadyHtml = pagesHtmlArray.join(
-        `<br clear="all" style="page-break-before:always; mso-break-type:section-break;" />`
-      );
 
       setProgress(100);
       setProgressStage("اكتمل تجهيز الصفحات!");
-      finalHtmlRef.current = finalWordReadyHtml;
+      finalHtmlRef.current = assembledDocumentHtml;
       
       setCurrentStep("edit");
 
@@ -243,15 +244,10 @@ export default function PdfToWordPage() {
         </xml>
         <![endif]-->
         <style>
-          @page Section1 {
-            size: 595.3pt 841.9pt; /* A4 Size */
-            margin: 56.7pt 56.7pt 56.7pt 56.7pt;
-            mso-header-margin: 35.4pt;
-            mso-footer-margin: 35.4pt;
-            mso-paper-source: 0;
-          }
-          div.Section1 {
-            page: Section1;
+          @page {
+            size: 21cm 29.7cm; /* مقاس A4 الدقيق */
+            margin: 2cm 2cm 2cm 2cm;
+            mso-page-orientation: portrait;
           }
           body {
             font-family: 'Arial', 'Segoe UI', Tahoma, sans-serif;
@@ -262,14 +258,13 @@ export default function PdfToWordPage() {
           }
           p { margin: 6px 0; }
           .doc-page {
-            page-break-after: always;
+            page-break-after: always !important;
+            page-break-inside: avoid !important;
           }
         </style>
       </head>
       <body>
-        <div class="Section1">
-          ${finalHtmlRef.current}
-        </div>
+        ${finalHtmlRef.current}
       </body>
       </html>
     `;

@@ -65,7 +65,7 @@ export default function PdfToWordPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleConvertWithILovePDF = async () => {
+  const handleConvert = async () => {
     if (!file) return;
 
     setLoading(true);
@@ -75,14 +75,14 @@ export default function PdfToWordPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("/api/pdf-to-word", {
+      // الإرسال المباشر إلى سيرفر Render الخاص بك
+      const response = await fetch("https://pdf-converter-api-8dfv.onrender.com/convert", {
         method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "فشل التحويل عبر السيرفر.");
+        throw new Error("تعذر إكمال التحويل عبر السيرفر. قد يكون السيرفر في وضع الاستيقاظ، يرجى المحاولة بعد لحظات.");
       }
 
       const blob = await response.blob();
@@ -90,7 +90,7 @@ export default function PdfToWordPage() {
       setDownloadFilename(file.name.replace(/\.[^/.]+$/, "") + ".docx");
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "حدث خطأ أثناء تحويل المستند. يرجى المحاولة مرة أخرى.");
+      setError(err.message || "حدث خطأ أثناء معالجة الملف. يرجى المحاولة مرة أخرى.");
     } finally {
       setLoading(false);
     }
@@ -118,7 +118,7 @@ export default function PdfToWordPage() {
           </Link>
           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 px-3 py-1 rounded-full border border-red-100">
             <Sparkles className="w-3.5 h-3.5" />
-            تحويل عالي الدقة (DOCX)
+            محرك تحويل فائق الدقة (DOCX)
           </span>
         </div>
       </header>
@@ -131,7 +131,7 @@ export default function PdfToWordPage() {
                 تحويل PDF إلى WORD
               </h1>
               <p className="text-base text-gray-600 max-w-xl mx-auto">
-                تحويل فائق الدقة يحافظ على التنسيقات والخطوط والجداول بملف Word أصلي.
+                تحويل هندسي دقيق يحافظ على الخطوط والتنسيقات والجداول بملف Word أصلي.
               </p>
             </div>
 
@@ -200,7 +200,7 @@ export default function PdfToWordPage() {
             )}
 
             <button
-              onClick={handleConvertWithILovePDF}
+              onClick={handleConvert}
               disabled={loading}
               className="w-full py-4 bg-[#E5322D] hover:bg-[#c92520] disabled:bg-gray-300 text-white font-bold text-lg rounded-2xl shadow-md transition flex items-center justify-center gap-2"
             >
@@ -227,7 +227,7 @@ export default function PdfToWordPage() {
                 تم تحويل المستند بنجاح!
               </h2>
               <p className="text-sm text-gray-500">
-                تم الحفاظ على التنسيقات والجداول والخطوط بصيغة DOCX الأصلية.
+                تم بناء ملف DOCX أصلي يحافظ على الجداول والتنسيقات بدقة تامة.
               </p>
             </div>
 

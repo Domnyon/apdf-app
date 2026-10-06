@@ -13,7 +13,8 @@ import {
   AlertCircle,
   Sparkles,
   FileType,
-  Eye
+  Eye,
+  Info
 } from "lucide-react";
 
 export default function PdfToWordPage() {
@@ -161,7 +162,7 @@ export default function PdfToWordPage() {
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  className={`w-full max-w-3xl mx-auto border-2 border-dashed rounded-3xl p-12 sm:p-20 text-center transition-all bg-white shadow-sm flex flex-col items-center justify-center gap-6 ${
+                  className={`w-full max-w-3xl mx-auto border-2 border-dashed rounded-3xl p-10 sm:p-16 text-center transition-all bg-white shadow-sm flex flex-col items-center justify-center gap-5 ${
                     isDragging ? "border-red-500 bg-red-50/50 scale-[1.01]" : "border-gray-300"
                   }`}
                 >
@@ -184,6 +185,12 @@ export default function PdfToWordPage() {
                   <p className="text-sm font-medium text-gray-500">
                     أو أسقط ملف الـ PDF هنا
                   </p>
+
+                  {/* تنبيه نوع الملف */}
+                  <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200/80 px-4 py-2 rounded-xl text-amber-800 text-xs font-semibold shadow-xs">
+                    <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>تنبيه: تأكد بأن يكون ملف PDF نصياً وليس صورة ممسوحة ضوئياً (Scanner).</span>
+                  </div>
                 </div>
               </>
             ) : (
@@ -210,6 +217,12 @@ export default function PdfToWordPage() {
                       <X className="w-5 h-5" />
                     </button>
                   )}
+                </div>
+
+                {/* شريط تنبيه تأكيدي قبل التحويل */}
+                <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200/80 p-3.5 rounded-2xl text-amber-800 text-xs font-medium text-right">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>ملاحظة: لضمان دقة استخراج الكلمات وتنسيق الجداول، تأكد بأن الملف يحتوي على نصوص أصلية وليس صورة.</span>
                 </div>
 
                 {error && (

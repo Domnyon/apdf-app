@@ -12,31 +12,19 @@ import {
   RefreshCw,
   AlertCircle,
   Sparkles,
-  Edit3,
   FileType,
-  Plus,
-  Trash2
+  Eye
 } from "lucide-react";
-
-interface TextOverlay {
-  id: string;
-  text: string;
-}
 
 export default function PdfToWordPage() {
   const [file, setFile] = useState<File | null>(null);
   const [fileUrl, setFileUrl] = useState<string>("");
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const [stage, setStage] = useState<"upload" | "editor" | "download">("upload");
+  const [stage, setStage] = useState<"upload" | "preview" | "download">("upload");
 
-  // ملاحظات ونصوص الإضافة
-  const [overlays, setOverlays] = useState<TextOverlay[]>([]);
-  const [newText, setNewText] = useState<string>("");
-
-  // ملفات التحميل
+  // ملف الـ Word المحول
   const [downloadBlob, setDownloadBlob] = useState<Blob | null>(null);
-  const [selectedFormat, setSelectedFormat] = useState<"docx" | "pdf">("docx");
   const [error, setError] = useState<string>("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,8 +77,6 @@ export default function PdfToWordPage() {
     setDownloadBlob(null);
     setError("");
     setStage("upload");
-    setOverlays([]);
-    setNewText("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -115,7 +101,7 @@ export default function PdfToWordPage() {
 
       const blob = await response.blob();
       setDownloadBlob(blob);
-      setStage("editor");
+      setStage("preview");
     } catch (err: any) {
       console.error(err);
       setError(err.message || "حدث خطأ أثناء معالجة الملف. يرجى المحاولة مرة أخرى.");
@@ -124,43 +110,21 @@ export default function PdfToWordPage() {
     }
   };
 
-  const addOverlayText = () => {
-    if (!newText.trim()) return;
-    setOverlays([...overlays, { id: Math.random().toString(), text: newText.trim() }]);
-    setNewText("");
-  };
-
-  const removeOverlayText = (id: string) => {
-    setOverlays(overlays.filter(o => o.id !== id));
-  };
-
-  const handleFinalSave = (format: "docx" | "pdf") => {
-    setSelectedFormat(format);
+  const handleProceedToDownload = () => {
     setStage("download");
   };
 
   const triggerDownload = () => {
-    if (!file) return;
+    if (!file || !downloadBlob) return;
 
-    if (selectedFormat === "docx" && downloadBlob) {
-      const url = URL.createObjectURL(downloadBlob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = file.name.replace(/\.[^/.]+$/, "") + ".docx";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } else {
-      const url = URL.createObjectURL(file);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = file.name.replace(/\.[^/.]+$/, "") + ".pdf";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }
+    const url = URL.createObjectURL(downloadBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.name.replace(/\.[^/.]+$/, "") + ".docx";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -179,6 +143,7 @@ export default function PdfToWordPage() {
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8">
+        {/* المرحلة 1: رفع وتأكيد الملف */}
         {stage === "upload" && (
           <div className="w-full max-w-4xl text-center space-y-6">
             {!file ? (
@@ -188,7 +153,7 @@ export default function PdfToWordPage() {
                     تحويل PDF إلى WORD
                   </h1>
                   <p className="text-base text-gray-600 max-w-xl mx-auto">
-                    تحويل رسمي دقيق يحافظ على الخطوط العربية، الجداول، ومربعات النماذج مع إمكانية التعديل والمعاينة الفورية.
+                    تحويل رسمي دقيق يحافظ على الخطوط العربية، الجداول، ومربعات النماذج مع معاينة مباشرة قبل التنزيل.
                   </p>
                 </div>
 
@@ -265,7 +230,7 @@ export default function PdfToWordPage() {
                       <span>جاري المعالجة والمطابقة الفائقة...</span>
                     </>
                   ) : (
-                    <span>تحويل والدخول للمعاينة والتعديل</span>
+                    <span>تحويل والانتقال للمعاينة</span>
                   )}
                 </button>
               </div>
@@ -273,136 +238,43 @@ export default function PdfToWordPage() {
           </div>
         )}
 
-        {/* المرحلة 2: استعراض المستند الفعلي على ورقة A4 مع أدوات الإضافة */}
-        {stage === "editor" && (
-          <div className="w-full max-w-6xl space-y-6">
-            {/* شريط الإجراءات */}
+        {/* المرحلة 2: معاينة ورقة A4 النظيفة وزر التصدير لوورد */}
+        {stage === "preview" && (
+          <div className="w-full max-w-4xl space-y-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-              <div className="flex items-center gap-2 text-gray-800 font-bold">
-                <Edit3 className="w-5 h-5 text-red-600" />
-                <span>معاينة المستند المحول (قياس A4)</span>
+              <div className="flex items-center gap-2 text-gray-800 font-bold text-sm">
+                <Eye className="w-5 h-5 text-red-600" />
+                <span>معاينة المستند (قياس A4)</span>
               </div>
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <button
-                  onClick={() => handleFinalSave("docx")}
-                  className="flex-1 sm:flex-none px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-sm shadow-sm"
-                >
-                  <FileType className="w-4 h-4" />
-                  حفظ بصيغة WORD (DOCX)
-                </button>
-                <button
-                  onClick={() => handleFinalSave("pdf")}
-                  className="flex-1 sm:flex-none px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-sm shadow-sm"
-                >
-                  <FileText className="w-4 h-4" />
-                  حفظ بصيغة PDF
-                </button>
-              </div>
+              <button
+                onClick={handleProceedToDownload}
+                className="w-full sm:w-auto px-7 py-3 bg-[#E5322D] hover:bg-[#c92520] text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-sm shadow-md active:scale-95"
+              >
+                <FileType className="w-4 h-4" />
+                حفظ بصيغة WORD (DOCX)
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-              {/* ورقة A4 التفاعلية التي تعرض المستند الحقيقي */}
-              <div className="lg:col-span-2 flex justify-center">
-                <div 
-                  className="w-full max-w-[760px] h-[920px] bg-white rounded-2xl shadow-xl border border-gray-300 overflow-hidden relative flex flex-col"
-                >
-                  {/* عرض محتوى المستند الفعلي */}
-                  {fileUrl ? (
-                    <iframe
-                      src={`${fileUrl}#toolbar=0&navpanes=0`}
-                      className="w-full h-full border-0"
-                      title="معاينة المستند"
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-gray-400">
-                      جاري تحميل المعاينة...
-                    </div>
-                  )}
-
-                  {/* طبقة الملاحظات والنصوص المضافة */}
-                  {overlays.length > 0 && (
-                    <div className="absolute top-4 left-4 right-4 bg-white/95 backdrop-blur-sm p-3 rounded-xl border border-gray-200 shadow-md space-y-1 z-10">
-                      <p className="text-[11px] font-bold text-gray-500">الإضافات والملاحظات المرفقة بالملف:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {overlays.map((item) => (
-                          <span
-                            key={item.id}
-                            className="inline-flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg border border-blue-200"
-                          >
-                            <span>{item.text}</span>
-                            <button
-                              onClick={() => removeOverlayText(item.id)}
-                              className="text-blue-400 hover:text-red-500"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* لوحة إضافة وتعديل النصوص على المستند */}
-              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-5">
-                <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                  <Edit3 className="w-4 h-4 text-red-500" />
-                  أدوات التعديل والإضافة على الورقة
-                </h4>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-600">
-                    أضف نصاً أو ملاحظة للمستند:
-                  </label>
-                  <textarea
-                    value={newText}
-                    onChange={(e) => setNewText(e.target.value)}
-                    placeholder="اكتب التعديل أو النص الإضافي هنا..."
-                    rows={4}
-                    className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            {/* ورقة A4 النقية للمعاينة فقط */}
+            <div className="flex justify-center overflow-auto py-2">
+              <div className="w-full max-w-[794px] h-[1050px] bg-white rounded-xl shadow-2xl border border-gray-300 overflow-hidden relative">
+                {fileUrl ? (
+                  <iframe
+                    src={`${fileUrl}#toolbar=0&navpanes=0`}
+                    className="w-full h-full border-0"
+                    title="معاينة المستند"
                   />
-                  <button
-                    onClick={addOverlayText}
-                    disabled={!newText.trim()}
-                    className="w-full py-2.5 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-200 text-white font-semibold text-xs rounded-xl transition flex items-center justify-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    إدراج النص على الورقة
-                  </button>
-                </div>
-
-                {overlays.length > 0 && (
-                  <div className="pt-4 border-t border-gray-100 space-y-2">
-                    <p className="text-xs font-bold text-gray-700">النصوص المضافة حالياً ({overlays.length}):</p>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                      {overlays.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between text-xs bg-gray-50 p-2.5 rounded-lg border border-gray-200"
-                        >
-                          <span className="truncate max-w-[200px] text-gray-700">{item.text}</span>
-                          <button
-                            onClick={() => removeOverlayText(item.id)}
-                            className="text-gray-400 hover:text-red-600 transition"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    جاري تحميل المعاينة...
                   </div>
                 )}
-
-                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-xs leading-relaxed">
-                  💡 تظهر المعاينة الورقة بقياس A4 كما هي، وعند الضغط على <strong>حفظ بصيغة WORD</strong> ستحصل على ملف DOCX مفتوح المصدر جاهز للتعديل الكامل في Microsoft Word.
-                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* المرحلة 3: التحميل النهائي */}
+        {/* المرحلة 3: صفحة التحميل النهائية */}
         {stage === "download" && (
           <div className="w-full max-w-xl bg-white border border-gray-200 rounded-3xl p-8 sm:p-12 text-center shadow-sm space-y-6">
             <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
@@ -414,7 +286,7 @@ export default function PdfToWordPage() {
                 مستندك جاهز للتحميل الآن!
               </h2>
               <p className="text-sm text-gray-500">
-                تم حفظ التعديلات وتجهيز الملف بصيغة {selectedFormat.toUpperCase()} بأعلى دقة.
+                تم تحويل المستند بنجاح إلى ملف WORD (DOCX) مطابق للأصل.
               </p>
             </div>
 
@@ -424,7 +296,7 @@ export default function PdfToWordPage() {
                 className="w-full sm:w-auto px-10 py-5 bg-[#E5322D] hover:bg-[#c92520] active:scale-95 text-white font-black text-xl rounded-2xl shadow-xl hover:shadow-2xl transition flex items-center justify-center gap-3 mx-auto"
               >
                 <Download className="w-6 h-6 stroke-[2.5]" />
-                <span>تحميل ملف {selectedFormat === "docx" ? "WORD" : "PDF"}</span>
+                <span>تحميل ملف WORD</span>
               </button>
             </div>
 

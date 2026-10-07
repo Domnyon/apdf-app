@@ -23,17 +23,17 @@ export default function PdfToWordPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [stage, setStage] = useState<"upload" | "preview" | "download">("upload");
 
-  // حالة معاينة المستند عبر Canvas
+  // معاينة الجوال والكمبيوتر عبر Canvas
   const [renderingPreview, setRenderingPreview] = useState<boolean>(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // مستند DOCX المحول
+  // ملف الـ Word المحول
   const [downloadBlob, setDownloadBlob] = useState<Blob | null>(null);
   const [error, setError] = useState<string>("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // رسم الصفحة الأولى مباشرة على عنصر Canvas للتوافق مع متصفحات الهواتف والحواسب
+  // رسم الصفحة الأولى مع تفعيل خطوط وخرائط الحروف العربية (CMap)
   useEffect(() => {
     let isCancelled = false;
 
@@ -47,7 +47,15 @@ export default function PdfToWordPage() {
         
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const cMapUrl = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/cmaps/`;
+
+        const loadingTask = pdfjsLib.getDocument({
+          data: arrayBuffer,
+          cMapUrl: cMapUrl,
+          cMapPacked: true,
+          enableXfa: true,
+        });
+
         const pdf = await loadingTask.promise;
         const page = await pdf.getPage(1);
 
@@ -58,11 +66,13 @@ export default function PdfToWordPage() {
 
         const unscaledViewport = page.getViewport({ scale: 1.0 });
         const targetWidth = Math.min(window.innerWidth - 48, 794);
-        const scale = targetWidth / unscaledViewport.width;
+        const scale = (targetWidth / unscaledViewport.width) * (window.devicePixelRatio || 1);
         const viewport = page.getViewport({ scale });
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
+        canvas.style.width = `${targetWidth}px`;
+        canvas.style.height = `${(viewport.height / scale) * (targetWidth / unscaledViewport.width)}px`;
 
         if (context) {
           await page.render({
@@ -71,7 +81,7 @@ export default function PdfToWordPage() {
           }).promise;
         }
       } catch (err) {
-        console.error("فشل في عرض المعاينة على Canvas:", err);
+        console.error("فشل رسم المعاينة:", err);
       } finally {
         if (!isCancelled) setRenderingPreview(false);
       }
@@ -189,7 +199,6 @@ export default function PdfToWordPage() {
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center p-3 sm:p-8">
-        {/* المرحلة 1: رفع وتأكيد الملف */}
         {stage === "upload" && (
           <div className="w-full max-w-4xl text-center space-y-5 sm:space-y-6">
             {!file ? (
@@ -294,7 +303,6 @@ export default function PdfToWordPage() {
           </div>
         )}
 
-        {/* المرحلة 2: المعاينة المتوافقة مع الجوال عبر Canvas */}
         {stage === "preview" && (
           <div className="w-full max-w-4xl space-y-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-200 shadow-sm">
@@ -316,16 +324,15 @@ export default function PdfToWordPage() {
                 {renderingPreview && (
                   <div className="absolute inset-0 bg-white/80 backdrop-blur-xs flex items-center justify-center gap-2 text-xs font-semibold text-gray-500 z-10">
                     <RefreshCw className="w-4 h-4 animate-spin text-red-600" />
-                    <span>جاري تجهيز صورة المعاينة...</span>
+                    <span>جاري تجهيز صورة المعاينة وضبط الحروف العربية...</span>
                   </div>
                 )}
-                <canvas ref={canvasRef} className="w-full h-auto max-w-full block" />
+                <canvas ref={canvasRef} className="max-w-full h-auto block" />
               </div>
             </div>
           </div>
         )}
 
-        {/* المرحلة 3: صفحة التحميل النهائية */}
         {stage === "download" && (
           <div className="w-full max-w-xl bg-white border border-gray-200 rounded-3xl p-6 sm:p-12 text-center shadow-sm space-y-6">
             <div className="w-14 h-14 sm:w-16 sm:h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">

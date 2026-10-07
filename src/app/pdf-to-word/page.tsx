@@ -19,13 +19,10 @@ import {
 
 export default function PdfToWordPage() {
   const [file, setFile] = useState<File | null>(null);
+  const [fileUrl, setFileUrl] = useState<string>("");
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [stage, setStage] = useState<"upload" | "preview" | "download">("upload");
-
-  // معاينة الجوال والكمبيوتر عبر Canvas
-  const [renderingPreview, setRenderingPreview] = useState<boolean>(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // ملف الـ Word المحول
   const [downloadBlob, setDownloadBlob] = useState<Blob | null>(null);
@@ -33,66 +30,16 @@ export default function PdfToWordPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // رسم الصفحة الأولى مع تفعيل خطوط وخرائط الحروف العربية (CMap)
+  // إنشاء رابط محلي نظيف للملف لعرضه بدقة متناهية
   useEffect(() => {
-    let isCancelled = false;
-
-    async function renderPdfThumbnail() {
-      if (!file || stage !== "preview") return;
-
-      setRenderingPreview(true);
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const pdfjsLib = await import("pdfjs-dist");
-        
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-
-        const cMapUrl = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/cmaps/`;
-
-        const loadingTask = pdfjsLib.getDocument({
-          data: arrayBuffer,
-          cMapUrl: cMapUrl,
-          cMapPacked: true,
-          enableXfa: true,
-        });
-
-        const pdf = await loadingTask.promise;
-        const page = await pdf.getPage(1);
-
-        if (isCancelled || !canvasRef.current) return;
-
-        const canvas = canvasRef.current;
-        const context = canvas.getContext("2d");
-
-        const unscaledViewport = page.getViewport({ scale: 1.0 });
-        const targetWidth = Math.min(window.innerWidth - 48, 794);
-        const scale = (targetWidth / unscaledViewport.width) * (window.devicePixelRatio || 1);
-        const viewport = page.getViewport({ scale });
-
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        canvas.style.width = `${targetWidth}px`;
-        canvas.style.height = `${(viewport.height / scale) * (targetWidth / unscaledViewport.width)}px`;
-
-        if (context) {
-          await page.render({
-            canvasContext: context,
-            viewport: viewport,
-          }).promise;
-        }
-      } catch (err) {
-        console.error("فشل رسم المعاينة:", err);
-      } finally {
-        if (!isCancelled) setRenderingPreview(false);
-      }
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setFileUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setFileUrl("");
     }
-
-    renderPdfThumbnail();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [file, stage]);
+  }, [file]);
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -185,7 +132,7 @@ export default function PdfToWordPage() {
 
   return (
     <div className="min-h-screen bg-[#F8F9FD] flex flex-col font-sans" dir="rtl">
-      <header className="bg-white border-b border-gray-200 py-3.5 px-4 sm:px-6 sticky top-0 z-30 shadow-sm">
+      <header className="bg-white border-b border-gray-200 py-3.5 px-4 sm:px-6 sticky top-0 z-30 shadow-xs">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <Link href="/" className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 hover:text-red-600 transition">
             <ArrowRight className="w-4 h-4" />
@@ -216,7 +163,7 @@ export default function PdfToWordPage() {
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  className={`w-full max-w-3xl mx-auto border-2 border-dashed rounded-3xl p-8 sm:p-16 text-center transition-all bg-white shadow-sm flex flex-col items-center justify-center gap-4 sm:gap-5 ${
+                  className={`w-full max-w-3xl mx-auto border-2 border-dashed rounded-3xl p-8 sm:p-16 text-center transition-all bg-white shadow-xs flex flex-col items-center justify-center gap-4 sm:gap-5 ${
                     isDragging ? "border-red-500 bg-red-50/50 scale-[1.01]" : "border-gray-300"
                   }`}
                 >
@@ -247,7 +194,7 @@ export default function PdfToWordPage() {
                 </div>
               </>
             ) : (
-              <div className="w-full max-w-2xl mx-auto bg-white border border-gray-200 rounded-3xl p-5 sm:p-8 shadow-sm space-y-5 sm:space-y-6">
+              <div className="w-full max-w-2xl mx-auto bg-white border border-gray-200 rounded-3xl p-5 sm:p-8 shadow-xs space-y-5 sm:space-y-6">
                 <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl p-4">
                   <div className="flex items-center gap-3 overflow-hidden">
                     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-100 text-red-600 rounded-xl flex items-center justify-center shrink-0">
@@ -308,7 +255,7 @@ export default function PdfToWordPage() {
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-200 shadow-sm">
               <div className="flex items-center gap-2 text-gray-800 font-bold text-xs sm:text-sm">
                 <Eye className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
-                <span>معاينة المستند (قياس A4)</span>
+                <span>معاينة المستند (الأصل والمطابقة)</span>
               </div>
               <button
                 onClick={handleProceedToDownload}
@@ -319,22 +266,21 @@ export default function PdfToWordPage() {
               </button>
             </div>
 
-            <div className="flex justify-center overflow-auto py-2">
-              <div className="w-full max-w-[794px] bg-white rounded-xl shadow-xl border border-gray-300 overflow-hidden relative flex flex-col items-center justify-center min-h-[400px]">
-                {renderingPreview && (
-                  <div className="absolute inset-0 bg-white/80 backdrop-blur-xs flex items-center justify-center gap-2 text-xs font-semibold text-gray-500 z-10">
-                    <RefreshCw className="w-4 h-4 animate-spin text-red-600" />
-                    <span>جاري تجهيز صورة المعاينة وضبط الحروف العربية...</span>
-                  </div>
-                )}
-                <canvas ref={canvasRef} className="max-w-full h-auto block" />
-              </div>
+            {/* معاينة عبر عارض المتصفح الأصلي لضمان الحروف العربية بنسبة 100% */}
+            <div className="w-full max-w-[794px] mx-auto bg-white rounded-2xl shadow-xl border border-gray-300 overflow-hidden h-[600px] sm:h-[750px]">
+              {fileUrl && (
+                <iframe
+                  src={`${fileUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                  className="w-full h-full border-none"
+                  title="PDF Preview"
+                />
+              )}
             </div>
           </div>
         )}
 
         {stage === "download" && (
-          <div className="w-full max-w-xl bg-white border border-gray-200 rounded-3xl p-6 sm:p-12 text-center shadow-sm space-y-6">
+          <div className="w-full max-w-xl bg-white border border-gray-200 rounded-3xl p-6 sm:p-12 text-center shadow-xs space-y-6">
             <div className="w-14 h-14 sm:w-16 sm:h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
               <CheckCircle className="w-8 h-8 sm:w-10 sm:h-10" />
             </div>

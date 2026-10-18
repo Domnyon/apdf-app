@@ -23,7 +23,7 @@ const tools = [
   { title: "دمج ملفات PDF", desc: "دمج عدة ملفات وترتيب الصفحات", href: "/merge", icon: Layers, color: "from-purple-500 to-pink-600", badge: null },
   { title: "تقسيم واستخراج", desc: "حذف صفحات محددة واستخراج ما تحتاجه", href: "/split", icon: Scissors, color: "from-amber-500 to-orange-600", badge: null },
   { title: "ضغط ملفات PDF", desc: "تصغير حجم المستند والحفاظ على الجودة", href: "/compress", icon: Minimize2, color: "from-rose-500 to-red-600", badge: "مطلوب" },
-  { title: "طباعة ملفات PDF", desc: "معاينة وضبط خيارات القياس والطباعة", href: "/print", icon: Printer, color: "from-sky-500 to-indigo-600", badge: null },
+  { title: "طباعة PDF والصور", desc: "معاينة الملفات والطباعة عبر Wi-Fi", href: "/print-pdf", icon: Printer, color: "from-sky-500 to-indigo-600", badge: null },
   { title: "تحويل شامل (صور / PDF)", desc: "تحويل بين PDF والصور ومجلدات ZIP", href: "/convert", icon: ArrowLeftRight, color: "from-emerald-500 to-teal-600", badge: "شامل" },
   { title: "تدوير الصفحات", desc: "تعديل اتجاه الصفحات المقلوبة بلمسة", href: "/rotate", icon: RotateCw, color: "from-cyan-500 to-blue-600", badge: null },
   { title: "تحويل وتعديل لوورد (AI)", desc: "استخراج نصوص وتعديل المستند بالذكاء", href: "/pdf-to-word", icon: Bot, color: "from-violet-500 to-fuchsia-600", badge: "ذكاء اصطناعي" },

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DOMNY PDF | أدوات تعديل وتحويل ملفات PDF أونلاين مجاناً",
+  title: "APDF | أدوات تعديل وتحويل ملفات PDF أونلاين مجاناً",
   description: "أدوات مجانية وسريعة لمعالجة وتعديل ملفات PDF مباشرة من جهازك: دمج، تقسيم، ضغط، وتحويل بأمان تام وبدون رفع ملفاتك لأي خادم.",
 };
 

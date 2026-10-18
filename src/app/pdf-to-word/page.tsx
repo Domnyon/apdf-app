@@ -17,9 +17,29 @@ import {
   Info
 } from "lucide-react";
 
+const OCR_LANGUAGES = [
+  { value: "en-US", label: "الإنجليزية (الولايات المتحدة)" },
+  { value: "en-GB", label: "الإنجليزية (المملكة المتحدة)" },
+  { value: "fr-FR", label: "الفرنسية" },
+  { value: "de-DE", label: "الألمانية" },
+  { value: "es-ES", label: "الإسبانية" },
+  { value: "it-IT", label: "الإيطالية" },
+  { value: "pt-BR", label: "البرتغالية (البرازيل)" },
+  { value: "pt-PT", label: "البرتغالية (البرتغال)" },
+  { value: "nl-NL", label: "الهولندية" },
+  { value: "ru-RU", label: "الروسية" },
+  { value: "tr-TR", label: "التركية" },
+  { value: "iw-IL", label: "العبرية" },
+  { value: "ja-JP", label: "اليابانية" },
+  { value: "ko-KR", label: "الكورية" },
+  { value: "zh-CN", label: "الصينية المبسطة" },
+  { value: "zh-Hant", label: "الصينية التقليدية" },
+] as const;
+
 export default function PdfToWordPage() {
   const [file, setFile] = useState<File | null>(null);
   const [fileUrl, setFileUrl] = useState<string>("");
+  const fileUrlRef = useRef<string>("");
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [stage, setStage] = useState<"upload" | "preview" | "download">("upload");
@@ -27,19 +47,22 @@ export default function PdfToWordPage() {
   // ملف الـ Word المحول
   const [downloadBlob, setDownloadBlob] = useState<Blob | null>(null);
   const [error, setError] = useState<string>("");
+  const [ocrLocale, setOcrLocale] = useState("en-US");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // إنشاء رابط محلي نظيف للملف لعرضه بدقة متناهية
-  useEffect(() => {
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setFileUrl(url);
-      return () => URL.revokeObjectURL(url);
-    } else {
-      setFileUrl("");
-    }
-  }, [file]);
+  useEffect(
+    () => () => {
+      if (fileUrlRef.current) URL.revokeObjectURL(fileUrlRef.current);
+    },
+    []
+  );
+
+  const updateFilePreview = (nextFile: File | null) => {
+    if (fileUrlRef.current) URL.revokeObjectURL(fileUrlRef.current);
+    fileUrlRef.current = nextFile ? URL.createObjectURL(nextFile) : "";
+    setFileUrl(fileUrlRef.current);
+  };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -67,19 +90,25 @@ export default function PdfToWordPage() {
 
   const validateAndSetFile = (selectedFile: File) => {
     if (selectedFile.type === "application/pdf" || selectedFile.name.toLowerCase().endsWith(".pdf")) {
+      updateFilePreview(selectedFile);
       setFile(selectedFile);
       setError("");
       setDownloadBlob(null);
+      setStage("upload");
     } else {
+      updateFilePreview(null);
+      setFile(null);
       setError("يرجى اختيار ملف بصيغة PDF فقط.");
     }
   };
 
   const resetAll = () => {
+    updateFilePreview(null);
     setFile(null);
     setDownloadBlob(null);
     setError("");
     setStage("upload");
+    setOcrLocale("en-US");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -92,22 +121,51 @@ export default function PdfToWordPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("ocrLocale", ocrLocale);
 
-      const response = await fetch("https://pdf-converter-api-8dfv.onrender.com/convert", {
+      const response = await fetch("/api/pdf-to-word", {
         method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error("تعذر إكمال التحويل عبر السيرفر. يرجى المحاولة بعد لحظات.");
+        const responseBody: unknown = await response.json().catch(() => null);
+        const message =
+          typeof responseBody === "object" &&
+          responseBody !== null &&
+          "error" in responseBody &&
+          typeof responseBody.error === "string"
+            ? responseBody.error
+            : "تعذر إكمال التحويل عبر الخادم. يرجى المحاولة بعد لحظات.";
+        throw new Error(message);
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (
+        !contentType
+          .toLowerCase()
+          .includes(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          )
+      ) {
+        throw new Error("استجابة التحويل ليست ملف Word صالحاً.");
       }
 
       const blob = await response.blob();
+      const signature = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+      if (blob.size === 0 || signature[0] !== 0x50 || signature[1] !== 0x4b) {
+        throw new Error("ملف Word المستلم غير مكتمل أو تالف.");
+      }
+
       setDownloadBlob(blob);
       setStage("preview");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || "حدث خطأ أثناء معالجة الملف. يرجى المحاولة مرة أخرى.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "حدث خطأ أثناء معالجة الملف. يرجى المحاولة مرة أخرى."
+      );
     } finally {
       setLoading(false);
     }
@@ -127,7 +185,7 @@ export default function PdfToWordPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -222,6 +280,27 @@ export default function PdfToWordPage() {
                 <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/80 p-3 rounded-2xl text-amber-800 text-[11px] sm:text-xs font-medium text-right">
                   <Info className="w-4 h-4 text-amber-600 shrink-0" />
                   <span>ملاحظة: لضمان دقة استخراج الكلمات وتنسيق الجداول، تأكد بأن الملف يحتوي على نصوص أصلية.</span>
+                </div>
+
+                <div className="space-y-2 text-right">
+                  <label htmlFor="ocr-locale" className="block text-xs font-bold text-gray-700">
+                    لغة التعرف الضوئي للمستندات الممسوحة
+                  </label>
+                  <select
+                    id="ocr-locale"
+                    value={ocrLocale}
+                    onChange={(event) => setOcrLocale(event.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-gray-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                  >
+                    {OCR_LANGUAGES.map((language) => (
+                      <option key={language.value} value={language.value}>
+                        {language.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] leading-5 text-gray-500">
+                    يستخدم Adobe OCR اللغة المحددة للصفحات المصورة. لا يدعم إصدار Adobe PDF Services الحالي التعرف الضوئي على العربية؛ النص العربي الأصلي القابل للتحديد يظل ضمن عملية التصدير.
+                  </p>
                 </div>
 
                 {error && (

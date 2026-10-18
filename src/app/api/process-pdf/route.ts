@@ -69,9 +69,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
-      { error: "حدث خطأ أثناء معالجة الملف: " + err.message },
+      {
+        error:
+          "حدث خطأ أثناء معالجة الملف: " +
+          (err instanceof Error ? err.message : "سبب غير معروف."),
+      },
       { status: 500 }
     );
   }

@@ -31,6 +31,81 @@ interface ImageFileItem {
   name: string;
 }
 
+interface PdfJsViewport {
+  width: number;
+  height: number;
+}
+
+interface PdfJsPage {
+  getViewport(options: { scale: number }): PdfJsViewport;
+  render(options: {
+    canvasContext: CanvasRenderingContext2D;
+    viewport: PdfJsViewport;
+  }): { promise: Promise<void> };
+}
+
+interface PdfJsDocument {
+  numPages: number;
+  getPage(pageNumber: number): Promise<PdfJsPage>;
+}
+
+interface PdfJsLibrary {
+  GlobalWorkerOptions: { workerSrc: string };
+  getDocument(options: {
+    data: ArrayBuffer;
+    cMapUrl: string;
+    cMapPacked: boolean;
+  }): { promise: Promise<PdfJsDocument> };
+}
+
+function isPdfJsLibrary(value: unknown): value is PdfJsLibrary {
+  if (typeof value !== "object" || value === null) return false;
+  const workerOptions = Reflect.get(value, "GlobalWorkerOptions");
+  return (
+    typeof Reflect.get(value, "getDocument") === "function" &&
+    typeof workerOptions === "object" &&
+    workerOptions !== null &&
+    typeof Reflect.get(workerOptions, "workerSrc") === "string"
+  );
+}
+
+let pdfJsLoadPromise: Promise<PdfJsLibrary> | null = null;
+
+async function loadConvertPdfJs(): Promise<PdfJsLibrary> {
+  if (typeof window === "undefined") {
+    throw new Error("PDF engine is only available in the browser.");
+  }
+
+  const existingLibrary = Reflect.get(window, "pdfjsLib");
+  if (isPdfJsLibrary(existingLibrary)) return existingLibrary;
+
+  if (!pdfJsLoadPromise) {
+    pdfJsLoadPromise = new Promise<PdfJsLibrary>((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.onload = () => {
+        const library = Reflect.get(window, "pdfjsLib");
+        if (!isPdfJsLibrary(library)) {
+          pdfJsLoadPromise = null;
+          reject(new Error("PDF engine error"));
+          return;
+        }
+
+        library.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        resolve(library);
+      };
+      script.onerror = () => {
+        pdfJsLoadPromise = null;
+        reject(new Error("CDN load error"));
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  return pdfJsLoadPromise;
+}
+
 export default function ConvertPage() {
   const [direction, setDirection] = useState<ConvertDirection>("img-to-pdf");
   const [selectedImages, setSelectedImages] = useState<ImageFileItem[]>([]);
@@ -45,29 +120,6 @@ export default function ConvertPage() {
   const [outputFileName, setOutputFileName] = useState<string>("apdf_converted");
   const [isPdfOutput, setIsPdfOutput] = useState<boolean>(true);
   const [isArchiveOutput, setIsArchiveOutput] = useState<boolean>(false);
-
-  // تحميل مكتبة pdf.js في المتصفح فقط عند الحاجة
-  const getPdfJs = async (): Promise<any> => {
-    if (typeof window === "undefined") return null;
-    if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
-
-    return new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-      script.onload = () => {
-        const lib = (window as any).pdfjsLib;
-        if (lib) {
-          lib.GlobalWorkerOptions.workerSrc =
-            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-          resolve(lib);
-        } else {
-          reject(new Error("PDF engine error"));
-        }
-      };
-      script.onerror = () => reject(new Error("CDN load error"));
-      document.head.appendChild(script);
-    });
-  };
 
   // رفع الصور
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,7 +218,7 @@ export default function ConvertPage() {
     setStatusMsg("جاري معالجة صفحات المستند وإنشاء ملف ZIP...");
 
     try {
-      const pdfjsLib = await getPdfJs();
+      const pdfjsLib = await loadConvertPdfJs();
       if (!pdfjsLib) throw new Error("PDF engine error");
 
       const arrayBuffer = await selectedPdf.arrayBuffer();

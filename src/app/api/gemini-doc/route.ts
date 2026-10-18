@@ -74,11 +74,16 @@ ${customPrompt ? `ملاحظة: ${customPrompt}` : ""}
     }
 
     return NextResponse.json({ docHtml: htmlOutput });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Gemini Route Error:", error);
     // إرجاع رسالة الخطأ الحقيقية القادمة من جوجل لمعرفة سبب التعطل فوراً
     return NextResponse.json(
-      { error: error?.message || error?.toString() || "حدث خطأ أثناء معالجة المستند." },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "حدث خطأ أثناء معالجة المستند.",
+      },
       { status: 500 }
     );
   }

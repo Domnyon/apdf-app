@@ -37,6 +37,80 @@ interface CanvasItem {
   isBold?: boolean;
 }
 
+interface EditorPdfViewport {
+  width: number;
+  height: number;
+}
+
+interface EditorPdfPage {
+  getViewport(options: { scale: number }): EditorPdfViewport;
+  render(options: {
+    canvasContext: CanvasRenderingContext2D;
+    viewport: EditorPdfViewport;
+  }): { promise: Promise<void> };
+}
+
+interface EditorPdfDocument {
+  getPage(pageNumber: number): Promise<EditorPdfPage>;
+}
+
+interface EditorPdfJsLibrary {
+  GlobalWorkerOptions: { workerSrc: string };
+  getDocument(options: {
+    data: ArrayBuffer;
+    cMapUrl: string;
+    cMapPacked: boolean;
+  }): { promise: Promise<EditorPdfDocument> };
+}
+
+function isEditorPdfJsLibrary(value: unknown): value is EditorPdfJsLibrary {
+  if (typeof value !== "object" || value === null) return false;
+  const workerOptions = Reflect.get(value, "GlobalWorkerOptions");
+  return (
+    typeof Reflect.get(value, "getDocument") === "function" &&
+    typeof workerOptions === "object" &&
+    workerOptions !== null &&
+    typeof Reflect.get(workerOptions, "workerSrc") === "string"
+  );
+}
+
+let editorPdfJsLoadPromise: Promise<EditorPdfJsLibrary> | null = null;
+
+async function loadEditorPdfJs(): Promise<EditorPdfJsLibrary> {
+  if (typeof window === "undefined") {
+    throw new Error("PDF engine is only available in the browser.");
+  }
+
+  const existingLibrary = Reflect.get(window, "pdfjsLib");
+  if (isEditorPdfJsLibrary(existingLibrary)) return existingLibrary;
+
+  if (!editorPdfJsLoadPromise) {
+    editorPdfJsLoadPromise = new Promise<EditorPdfJsLibrary>((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.onload = () => {
+        const library = Reflect.get(window, "pdfjsLib");
+        if (!isEditorPdfJsLibrary(library)) {
+          editorPdfJsLoadPromise = null;
+          reject(new Error("PDF engine error"));
+          return;
+        }
+
+        library.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        resolve(library);
+      };
+      script.onerror = () => {
+        editorPdfJsLoadPromise = null;
+        reject(new Error("CDN load error"));
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  return editorPdfJsLoadPromise;
+}
+
 export default function EditorPage() {
   const [mode, setMode] = useState<"single" | "multi" | null>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
@@ -68,30 +142,8 @@ export default function EditorPage() {
 
   const selectedItem = items.find((it) => it.id === selectedItemId);
 
-  const getPdfJs = async (): Promise<any> => {
-    if (typeof window === "undefined") return null;
-    if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
-
-    return new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-      script.onload = () => {
-        const lib = (window as any).pdfjsLib;
-        if (lib) {
-          lib.GlobalWorkerOptions.workerSrc =
-            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-          resolve(lib);
-        } else {
-          reject(new Error("PDF engine error"));
-        }
-      };
-      script.onerror = () => reject(new Error("CDN load error"));
-      document.head.appendChild(script);
-    });
-  };
-
   const renderPdfPageToImage = async (file: File, pageNum: number): Promise<string> => {
-    const pdfjsLib = await getPdfJs();
+    const pdfjsLib = await loadEditorPdfJs();
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({
       data: arrayBuffer,
@@ -104,6 +156,7 @@ export default function EditorPage() {
     const viewport = page.getViewport({ scale: 1.5 });
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas context unavailable");
     canvas.width = viewport.width;
     canvas.height = viewport.height;
 

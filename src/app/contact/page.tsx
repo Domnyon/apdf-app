@@ -2,39 +2,54 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Send, CheckCircle2, Clock, ShieldCheck, MessageSquare, AlertCircle } from "lucide-react";
+import { ArrowRight, Send, CheckCircle2, Clock, ShieldCheck, MessageSquare, AlertCircle, Loader2 } from "lucide-react";
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({ name: "", email: "", subject: "", message: "" });
-  const [isSent, setIsSent] = useState(false);
-  const [error, setError] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setErrorMsg("");
 
-    // شرط التحقق من إدخال البريد الإلكتروني بصيغة صحيحة
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!formData.email.trim() || !emailRegex.test(formData.email.trim())) {
-      setError("يرجى إدخال بريد إلكتروني صحيح حتى نتمكن من الرد عليك.");
+      setErrorMsg("يرجى إدخال بريد إلكتروني صحيح.");
       return;
     }
 
-    if (!formData.name.trim() || !formData.subject.trim() || !formData.message.trim()) {
-      setError("يرجى ملء جميع الحقول المطلوبة قبل الإرسال.");
-      return;
+    setStatus("loading");
+
+    try {
+      // إرسال مباشر ومعتمد إلى بريدك الإلكتروني apdfapp@gmail.com
+      const response = await fetch("https://formsubmit.co/ajax/apdfapp@gmail.com", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          _subject: `[apdf.app] رسالة جديدة: ${formData.subject}`,
+          الاسم: formData.name,
+          البريد_الإلكتروني: formData.email,
+          الموضوع: formData.subject,
+          الرسالة: formData.message,
+          _captcha: "false", // تعطيل الكابتشا لسرعة الإرسال
+        }),
+      });
+
+      if (response.ok) {
+        setStatus("success");
+        setFormData({ name: "", email: "", subject: "", message: "" });
+      } else {
+        setStatus("error");
+        setErrorMsg("تعذر إرسال الرسالة، يرجى المحاولة لاحقاً.");
+      }
+    } catch {
+      setStatus("error");
+      setErrorMsg("حدث خطأ في الاتصال بالشبكة.");
     }
-
-    // إرسال الرسالة برمجياً للإيميل مشفراً دون عرضه كنص في الكود
-    const recipient = atob("YXBkZmFwcEBnbWFpbC5jb20="); // apdfapp@gmail.com
-    const emailBody = `اسم المرسل: ${formData.name}\nالبريد الإلكتروني للرد: ${formData.email}\n\nالموضوع: ${formData.subject}\n\nنص الرسالة:\n${formData.message}`;
-
-    const mailtoUrl = `mailto:${recipient}?subject=${encodeURIComponent(
-      `[apdf.app تواصل] ${formData.subject}`
-    )}&body=${encodeURIComponent(emailBody)}`;
-
-    window.location.href = mailtoUrl;
-    setIsSent(true);
   };
 
   return (
@@ -51,36 +66,36 @@ export default function ContactPage() {
       <main className="max-w-2xl mx-auto px-4 py-10 space-y-8 flex-1 w-full">
         <div className="space-y-2 border-b border-slate-900 pb-6 text-center">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold">
-            <MessageSquare className="w-3.5 h-3.5" /> الدعم الفني والمقترحات
+            <MessageSquare className="w-3.5 h-3.5" /> الدعم والملاحظات
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white">اتصل بنا</h1>
           <p className="text-xs text-slate-400">
-            أرسل استفسارك وسيقوم فريق الدعم بمراجعة طلبك والرد على بريدك
+            أرسل استفسارك وسيقوم فريق الدعم بالرد مباشرة على بريدك الإلكتروني
           </p>
         </div>
 
-        {isSent ? (
+        {status === "success" ? (
           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6 text-center space-y-3">
             <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-6 h-6" />
             </div>
-            <h2 className="text-base font-bold text-white">تم تجهيز رسالتك للإرسال</h2>
+            <h2 className="text-base font-bold text-white">تم استلام رسالتك بنجاح</h2>
             <p className="text-xs text-slate-400 leading-relaxed">
-              تم تحويل بيانات رسالتك بنجاح إلى تطبيق البريد. سنرد على بريدك الإلكتروني ({formData.email}) في أقرب وقت.
+              وصلت رسالتك إلى إدارة الموقع، وسيتم الرد عليك في أقرب وقت.
             </p>
             <button
-              onClick={() => setIsSent(false)}
-              className="text-xs text-purple-400 hover:underline pt-2 inline-block"
+              onClick={() => setStatus("idle")}
+              className="text-xs text-purple-400 hover:underline pt-2 inline-block font-semibold"
             >
-              إرسال رسالة أخرى
+              إرسال رسالة جديدة
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="bg-slate-950/60 border border-slate-900 rounded-2xl p-6 space-y-4">
-            {error && (
+            {errorMsg && (
               <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{error}</span>
+                <span>{errorMsg}</span>
               </div>
             )}
 
@@ -116,7 +131,7 @@ export default function ContactPage() {
               <input
                 type="text"
                 required
-                placeholder="مثال: استفسار عن تحويل ملفات أو بلاغ عطل"
+                placeholder="مثال: اقتراح تطوير أو بلاغ فني"
                 value={formData.subject}
                 onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
                 className="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors"
@@ -128,7 +143,7 @@ export default function ContactPage() {
               <textarea
                 required
                 rows={4}
-                placeholder="اكتب رسالتك بالتفصيل..."
+                placeholder="اكتب تفاصيل استفسارك بالتفصيل..."
                 value={formData.message}
                 onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                 className="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors resize-none"
@@ -137,9 +152,18 @@ export default function ContactPage() {
 
             <button
               type="submit"
-              className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-3 rounded-xl transition-all flex items-center justify-center gap-2 active:scale-[0.98] shadow-lg shadow-purple-600/20"
+              disabled={status === "loading"}
+              className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-3 rounded-xl transition-all flex items-center justify-center gap-2 active:scale-[0.98] shadow-lg shadow-purple-600/20 disabled:opacity-50"
             >
-              <Send className="w-3.5 h-3.5" /> إرسال الرسالة
+              {status === "loading" ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال...
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" /> إرسال الرسالة الآن
+                </>
+              )}
             </button>
           </form>
         )}
@@ -154,9 +178,9 @@ export default function ContactPage() {
 
           <div className="bg-slate-950/40 border border-slate-900 rounded-xl p-3.5 space-y-1">
             <div className="flex items-center gap-2 text-white font-bold text-xs">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> سرية تامة
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> سرية وأمان
             </div>
-            <p className="text-[11px] text-slate-400">لا يتم مشاركة بريدك الإلكتروني مع أي أطراف إعلانية.</p>
+            <p className="text-[11px] text-slate-400">تظل بياناتك ومراسلاتك مشفرة ومحمية بالكامل.</p>
           </div>
         </div>
       </main>

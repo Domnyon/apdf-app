@@ -233,13 +233,13 @@ export default function ConvertPage() {
 
   return (
     <div
-      className="min-h-screen bg-[#070b12] text-slate-100 font-sans selection:bg-purple-500 selection:text-white relative flex flex-col justify-between"
+      className="relative flex min-h-screen w-full max-w-full flex-col justify-between overflow-x-hidden bg-[#070b12] font-sans text-slate-100 selection:bg-purple-500 selection:text-white"
       dir="rtl"
     >
-      <div className="absolute top-0 right-1/4 w-[500px] h-[350px] bg-purple-600/10 blur-[130px] rounded-full pointer-events-none" />
+      <div className="absolute top-0 right-1/4 h-[350px] w-[500px] max-w-full rounded-full bg-purple-600/10 blur-[130px] pointer-events-none" />
 
       {/* Header */}
-      <header className="relative z-30 max-w-6xl mx-auto w-full px-4 py-4 flex items-center justify-between border-b border-slate-900">
+      <header className="relative z-30 mx-auto flex w-full max-w-full items-center justify-between border-b border-slate-900 px-4 py-4 lg:max-w-6xl">
         <Link
           href="/"
           className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition px-3 py-2 rounded-xl bg-slate-900/60 border border-slate-800"
@@ -257,7 +257,7 @@ export default function ConvertPage() {
         </div>
       </header>
 
-      <main className="relative z-20 max-w-4xl mx-auto px-3 py-6 flex-1 w-full space-y-12">
+      <main className="relative z-20 mx-auto flex w-full max-w-full flex-1 flex-col space-y-12 px-3 py-6 lg:max-w-4xl">
         {processing && (
           <div className="fixed inset-0 z-50 bg-[#070b12]/80 backdrop-blur-md flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
@@ -267,7 +267,7 @@ export default function ConvertPage() {
 
         {/* شاشة التحميل والبانر الإعلاني عند الانتهاء */}
         {downloadReady && outputDownloadUrl ? (
-          <div className="max-w-xl mx-auto space-y-6 pt-2 animate-in fade-in zoom-in-95 duration-200">
+          <div className="mx-auto w-full max-w-full space-y-6 pt-2 animate-in fade-in zoom-in-95 duration-200 sm:max-w-xl">
             {/* البانر الإعلاني */}
             <div className="w-full bg-slate-900/70 border border-dashed border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center text-center min-h-[120px] sm:min-h-[160px] relative overflow-hidden group">
               <span className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mb-1">
@@ -280,14 +280,14 @@ export default function ConvertPage() {
             </div>
 
             {/* بطاقة النتيجة وزر التحميل */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-3xl p-6 sm:p-8 text-center space-y-6 shadow-2xl relative">
+            <div className="relative w-full max-w-full space-y-6 rounded-3xl border border-slate-800 bg-slate-950/80 p-6 text-center shadow-2xl sm:p-8">
               <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto shadow-[0_0_30px_rgba(16,185,129,0.2)]">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
 
               <div className="space-y-1.5">
                 <h2 className="text-xl sm:text-2xl font-black text-white">تم التحويل بنجاح!</h2>
-                <p className="text-xs sm:text-sm text-slate-400">
+                <p className="break-words text-xs sm:text-sm text-slate-400">
                   {isArchiveOutput
                     ? "تم استخراج جميع صفحات المستند وحفظها داخل ملف ZIP مضغوط وجاهز للتحميل."
                     : isPdfOutput
@@ -323,8 +323,8 @@ export default function ConvertPage() {
           </div>
         ) : (
           /* واجهة الأداة الرئيسية */
-          <div className="space-y-8">
-            <div className="max-w-xl mx-auto text-center space-y-2 pt-2">
+          <div className="w-full max-w-full space-y-8">
+            <div className="mx-auto w-full max-w-full space-y-2 pt-2 text-center sm:max-w-xl">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-xs font-bold">
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>تحويل فوري فائق السرعة</span>
@@ -338,7 +338,7 @@ export default function ConvertPage() {
             </div>
 
             {/* محول الاتجاه: من صورة إلى PDF أو العكس */}
-            <div className="max-w-md mx-auto flex bg-slate-950/80 p-1.5 rounded-2xl border border-slate-800 gap-1 text-xs">
+            <div className="mx-auto flex w-full max-w-full min-w-0 gap-1 rounded-2xl border border-slate-800 bg-slate-950/80 p-1.5 text-xs sm:max-w-md">
               <button
                 type="button"
                 onClick={() => {
@@ -374,8 +374,8 @@ export default function ConvertPage() {
 
             {/* مسار: تحويل الصور إلى PDF */}
             {direction === "img-to-pdf" && (
-              <div className="max-w-2xl mx-auto space-y-6">
-                <label className="border-2 border-dashed border-slate-800 hover:border-purple-500/60 rounded-3xl p-10 flex flex-col items-center justify-center cursor-pointer transition bg-slate-950/60 text-center shadow-xl group">
+              <div className="mx-auto w-full max-w-full space-y-6 sm:max-w-2xl">
+                <label className="group flex w-full max-w-full cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-800 bg-slate-950/60 p-6 text-center shadow-xl transition hover:border-purple-500/60 sm:p-10">
                   <div className="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-3 group-hover:scale-110 transition-transform">
                     <UploadCloud className="w-7 h-7" />
                   </div>
@@ -395,7 +395,7 @@ export default function ConvertPage() {
                 </label>
 
                 {selectedImages.length > 0 && (
-                  <div className="space-y-4">
+                  <div className="w-full max-w-full space-y-4">
                     <div className="flex items-center justify-between text-xs px-1">
                       <span className="font-bold text-slate-300">
                         الصور المحددة ({selectedImages.length}):
@@ -409,7 +409,7 @@ export default function ConvertPage() {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="grid w-full max-w-full grid-cols-2 gap-3 sm:grid-cols-4">
                       {selectedImages.map((img, idx) => (
                         <div
                           key={img.id}
@@ -451,9 +451,9 @@ export default function ConvertPage() {
 
             {/* مسار: تحويل PDF إلى صور */}
             {direction === "pdf-to-img" && (
-              <div className="max-w-2xl mx-auto space-y-6">
+              <div className="mx-auto w-full max-w-full space-y-6 sm:max-w-2xl">
                 {!selectedPdf ? (
-                  <label className="border-2 border-dashed border-slate-800 hover:border-purple-500/60 rounded-3xl p-10 flex flex-col items-center justify-center cursor-pointer transition bg-slate-950/60 text-center shadow-xl group">
+                  <label className="group flex w-full max-w-full cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-800 bg-slate-950/60 p-6 text-center shadow-xl transition hover:border-purple-500/60 sm:p-10">
                     <div className="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-3 group-hover:scale-110 transition-transform">
                       <UploadCloud className="w-7 h-7" />
                     </div>
@@ -469,11 +469,11 @@ export default function ConvertPage() {
                     />
                   </label>
                 ) : (
-                  <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 space-y-4">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
+                  <div className="w-full max-w-full space-y-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-5">
+                    <div className="flex min-w-0 items-center justify-between gap-3 text-xs">
+                      <div className="flex min-w-0 items-center gap-2">
                         <FileText className="w-5 h-5 text-purple-400" />
-                        <span className="font-bold text-white">{selectedPdf.name}</span>
+                        <span className="min-w-0 break-all font-bold text-white">{selectedPdf.name}</span>
                       </div>
                       <button
                         type="button"
@@ -502,13 +502,13 @@ export default function ConvertPage() {
         )}
 
         {/* محتوى السيو الشامل ودليل الاستخدام والأسئلة الشائعة */}
-        <section className="space-y-8 pt-8 border-t border-slate-900 text-xs sm:text-sm leading-relaxed text-slate-300">
+        <section className="w-full max-w-full space-y-8 border-t border-slate-900 pt-8 text-xs leading-relaxed text-slate-300 sm:text-sm">
           <div className="space-y-4">
             <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-purple-400" />
               <span>كيفية تحويل PDF والصور بسرعة وسهولة</span>
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div className="grid w-full max-w-full grid-cols-1 gap-3.5 sm:grid-cols-3">
               <div className="bg-slate-950/60 border border-slate-900 rounded-2xl p-4 space-y-2">
                 <span className="text-xs font-black px-2 py-0.5 rounded bg-purple-500/20 text-purple-400">
                   1. اختر النوع
@@ -541,7 +541,7 @@ export default function ConvertPage() {
 
           <div className="bg-slate-950/50 border border-slate-900 rounded-2xl p-5 space-y-4">
             <h2 className="text-base font-bold text-white">مميزات أداة تحويل PDF والصور من apdf.app</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="grid w-full max-w-full grid-cols-1 gap-4 text-xs sm:grid-cols-2">
               <div className="flex items-start gap-2.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div>

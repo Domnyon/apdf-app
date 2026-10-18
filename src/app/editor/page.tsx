@@ -3,332 +3,951 @@
 import React, { useState, useRef } from "react";
 import Link from "next/link";
 import {
-  ArrowRight,
-  Upload,
   FileSignature,
-  Download,
-  Trash2,
-  Undo2,
-  Sparkles,
-  ShieldCheck,
-  Zap,
-  HelpCircle,
-  CheckCircle2,
-  PenTool,
+  ArrowRight,
+  UploadCloud,
+  FileText,
+  Files,
   Type,
+  PenTool,
+  Image as ImageIcon,
+  RotateCcw,
+  Check,
+  Sparkles,
+  Trash2,
+  Loader2,
+  X,
+  Bold,
+  Download,
+  CheckCircle2,
+  Share2,
 } from "lucide-react";
+import { PDFDocument } from "pdf-lib";
+
+interface CanvasItem {
+  id: string;
+  type: "text" | "image";
+  content: string;
+  percentX: number;
+  percentY: number;
+  color?: string;
+  sizePx: number;
+  isBold?: boolean;
+}
 
 export default function EditorPage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [fileName, setFileName] = useState("");
+  const [mode, setMode] = useState<"single" | "multi" | null>(null);
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
+  const [totalPages, setTotalPages] = useState<number>(0);
+  const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
+
+  const [activePageImage, setActivePageImage] = useState<string | null>(null);
+  const [items, setItems] = useState<CanvasItem[]>([]);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+
+  // شاشة التحميل والنتيجة النهائية مع البانر الإعلاني
+  const [downloadReady, setDownloadReady] = useState(false);
+  const [finalDownloadUrl, setFinalDownloadUrl] = useState<string | null>(null);
+  const [outputFileName, setOutputFileName] = useState<string>("apdf_edited.pdf");
+
+  // نافذة إدخال النص للجوال
+  const [showTextInputModal, setShowTextInputModal] = useState(false);
+  const [rawText, setRawText] = useState("");
+  const [selectedColor, setSelectedColor] = useState("#000000");
+  const [isBoldText, setIsBoldText] = useState(true);
+
+  const [activeTool, setActiveTool] = useState<"signature" | "stamp" | null>(null);
+  const previewWrapperRef = useRef<HTMLDivElement | null>(null);
+  const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [toolMode, setToolMode] = useState<"draw" | "text">("draw");
-  const [textInput, setTextInput] = useState("");
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [history, setHistory] = useState<ImageData[]>([]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.[0]) return;
-    const selected = e.target.files[0];
-    if (selected.type === "application/pdf" || selected.name.endsWith(".pdf")) {
-      setFile(selected);
-      setFileName(selected.name);
-      clearCanvas();
+  const [processing, setProcessing] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  const selectedItem = items.find((it) => it.id === selectedItemId);
+
+  const getPdfJs = async (): Promise<any> => {
+    if (typeof window === "undefined") return null;
+    if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
+
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.onload = () => {
+        const lib = (window as any).pdfjsLib;
+        if (lib) {
+          lib.GlobalWorkerOptions.workerSrc =
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+          resolve(lib);
+        } else {
+          reject(new Error("PDF engine error"));
+        }
+      };
+      script.onerror = () => reject(new Error("CDN load error"));
+      document.head.appendChild(script);
+    });
+  };
+
+  const renderPdfPageToImage = async (file: File, pageNum: number): Promise<string> => {
+    const pdfjsLib = await getPdfJs();
+    const arrayBuffer = await file.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({
+      data: arrayBuffer,
+      cMapUrl: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/",
+      cMapPacked: true,
+    });
+    const pdf = await loadingTask.promise;
+    const page = await pdf.getPage(pageNum);
+
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return canvas.toDataURL("image/png");
+  };
+
+  const handleSingleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setProcessing(true);
+    setStatusMsg("جاري تجهيز المستند...");
+
+    try {
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setActivePageImage(reader.result as string);
+          setItems([]);
+          setProcessing(false);
+          setStatusMsg(null);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setOriginalFile(file);
+        const imgData = await renderPdfPageToImage(file, 1);
+        setActivePageImage(imgData);
+        setItems([]);
+      }
+    } catch {
+      setStatusMsg("حدث خطأ أثناء قراءة الملف.");
+    } finally {
+      setProcessing(false);
     }
   };
 
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHistory([]);
-  };
+  const handleMultiUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const saveState = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    setHistory((prev) => [...prev, ctx.getImageData(0, 0, canvas.width, canvas.height)]);
-  };
+    setProcessing(true);
+    setStatusMsg("جاري فحص المستند...");
 
-  const undoLast = () => {
-    if (history.length === 0) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const newHistory = [...history];
-    newHistory.pop();
-    setHistory(newHistory);
-
-    if (newHistory.length > 0) {
-      ctx.putImageData(newHistory[newHistory.length - 1], 0, 0);
-    } else {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    try {
+      setOriginalFile(file);
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      setTotalPages(pdfDoc.getPageCount());
+    } catch {
+      setStatusMsg("ملف غير صالح.");
+    } finally {
+      setProcessing(false);
+      setStatusMsg(null);
     }
   };
 
-  const getPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
-    return { x: clientX - rect.left, y: clientY - rect.top };
-  };
+  const choosePageToEdit = async (pageIdx: number) => {
+    if (!originalFile) return;
+    setProcessing(true);
+    setSelectedPageIndex(pageIdx);
+    setStatusMsg(`جاري إعداد الصفحة ${pageIdx + 1}...`);
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    saveState();
-    const pos = getPos(e);
-
-    if (toolMode === "draw") {
-      setIsDrawing(true);
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-    } else if (toolMode === "text" && textInput.trim()) {
-      ctx.font = "16px sans-serif";
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(textInput, pos.x, pos.y);
-      setIsDrawing(false);
+    try {
+      const imgData = await renderPdfPageToImage(originalFile, pageIdx + 1);
+      setActivePageImage(imgData);
+      setItems([]);
+    } catch {
+      setStatusMsg("تعذر فتح الصفحة.");
+    } finally {
+      setProcessing(false);
+      setStatusMsg(null);
     }
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || toolMode !== "draw") return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  const handleConfirmTextInsert = () => {
+    if (!rawText.trim()) return;
 
-    const pos = getPos(e);
-    ctx.strokeStyle = "#a855f7";
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
+    const newItem: CanvasItem = {
+      id: Date.now().toString(),
+      type: "text",
+      content: rawText,
+      percentX: 0.3,
+      percentY: 0.4,
+      sizePx: 26,
+      color: selectedColor,
+      isBold: isBoldText,
+    };
+
+    setItems((prev) => [...prev, newItem]);
+    setSelectedItemId(newItem.id);
+    setRawText("");
+    setShowTextInputModal(false);
   };
 
-  const stopDrawing = () => {
-    setIsDrawing(false);
+  const handleStampUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const newItem: CanvasItem = {
+        id: Date.now().toString(),
+        type: "image",
+        content: reader.result as string,
+        percentX: 0.35,
+        percentY: 0.4,
+        sizePx: 120,
+      };
+      setItems((prev) => [...prev, newItem]);
+      setSelectedItemId(newItem.id);
+      setActiveTool(null);
+    };
+    reader.readAsDataURL(file);
   };
 
-  const downloadSignature = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const url = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `apdf_signature_${Date.now()}.png`;
-    link.click();
+  const saveSignature = () => {
+    if (!sigCanvasRef.current) return;
+    const dataUrl = sigCanvasRef.current.toDataURL("image/png");
+    const newItem: CanvasItem = {
+      id: Date.now().toString(),
+      type: "image",
+      content: dataUrl,
+      percentX: 0.35,
+      percentY: 0.5,
+      sizePx: 130,
+    };
+    setItems((prev) => [...prev, newItem]);
+    setSelectedItemId(newItem.id);
+    setActiveTool(null);
+  };
+
+  const renderComposedImage = async (): Promise<string> => {
+    return new Promise((resolve) => {
+      const bgImg = new Image();
+      bgImg.src = activePageImage!;
+      bgImg.onload = async () => {
+        const offscreen = document.createElement("canvas");
+        const naturalW = bgImg.naturalWidth || bgImg.width;
+        const naturalH = bgImg.naturalHeight || bgImg.height;
+
+        offscreen.width = naturalW;
+        offscreen.height = naturalH;
+        const ctx = offscreen.getContext("2d")!;
+
+        ctx.drawImage(bgImg, 0, 0);
+
+        const displayW = previewWrapperRef.current?.clientWidth || naturalW;
+        const scaleMultiplier = naturalW / displayW;
+
+        for (const itm of items) {
+          const exactX = itm.percentX * naturalW;
+          const exactY = itm.percentY * naturalH;
+          const exactSize = itm.sizePx * scaleMultiplier;
+
+          if (itm.type === "text") {
+            const fontWeightStr = itm.isBold ? "900" : "normal";
+            ctx.font = `${fontWeightStr} ${exactSize}px 'Cairo', sans-serif`;
+            ctx.fillStyle = itm.color || "#000000";
+            ctx.textBaseline = "top";
+            ctx.textAlign = "left";
+
+            ctx.fillText(itm.content, exactX, exactY);
+          } else if (itm.type === "image") {
+            const img = new Image();
+            img.src = itm.content;
+            await new Promise((r) => {
+              img.onload = () => {
+                const ratio = img.height / img.width;
+                ctx.drawImage(img, exactX, exactY, exactSize, exactSize * ratio);
+                r(null);
+              };
+            });
+          }
+        }
+        resolve(offscreen.toDataURL("image/png"));
+      };
+    });
+  };
+
+  // اعتماد التعديلات والانتقال إلى صفحة التحميل والبانر الإعلاني
+  const handleCommitEdit = async () => {
+    setProcessing(true);
+    setStatusMsg("جاري حفظ التعديلات وإعداد ملف الـ PDF...");
+
+    try {
+      const editedDataUrl = await renderComposedImage();
+      let finalBlob: Blob;
+
+      if (mode === "single" || !originalFile) {
+        const newPdf = await PDFDocument.create();
+        const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
+        const embedded = await newPdf.embedPng(imgBytes);
+        const page = newPdf.addPage([embedded.width, embedded.height]);
+        page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
+
+        const bytes = await newPdf.save();
+        finalBlob = new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });
+      } else {
+        const originalBytes = await originalFile.arrayBuffer();
+        const pdfDoc = await PDFDocument.load(originalBytes);
+        const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
+        const embedded = await pdfDoc.embedPng(imgBytes);
+
+        const targetIdx = selectedPageIndex;
+        const targetPage = pdfDoc.getPage(targetIdx);
+        const { width, height } = targetPage.getSize();
+
+        const newPage = pdfDoc.insertPage(targetIdx, [width, height]);
+        newPage.drawImage(embedded, { x: 0, y: 0, width, height });
+        pdfDoc.removePage(targetIdx + 1);
+
+        const updatedBytes = await pdfDoc.save();
+        finalBlob = new Blob([updatedBytes as unknown as BlobPart], { type: "application/pdf" });
+      }
+
+      const generatedUrl = URL.createObjectURL(finalBlob);
+      setFinalDownloadUrl(generatedUrl);
+      setOutputFileName(`apdf_edited_${Date.now()}.pdf`);
+
+      // التحويل لصفحة التحميل والبانر
+      setDownloadReady(true);
+    } catch {
+      setStatusMsg("حدث خطأ أثناء حفظ الملف.");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleStartMove = (
+    clientX: number,
+    clientY: number,
+    itemId: string,
+    initialPercentX: number,
+    initialPercentY: number
+  ) => {
+    setSelectedItemId(itemId);
+    const container = previewWrapperRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const startX = clientX;
+    const startY = clientY;
+
+    const moveHandler = (moveX: number, moveY: number) => {
+      const deltaX = moveX - startX;
+      const deltaY = moveY - startY;
+
+      const newPercentX = Math.max(0, Math.min(0.92, initialPercentX + deltaX / rect.width));
+      const newPercentY = Math.max(0, Math.min(0.95, initialPercentY + deltaY / rect.height));
+
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === itemId
+            ? { ...it, percentX: newPercentX, percentY: newPercentY }
+            : it
+        )
+      );
+    };
+
+    const onMouseMove = (moveEv: MouseEvent) => moveHandler(moveEv.clientX, moveEv.clientY);
+    const onTouchMove = (touchEv: TouchEvent) => {
+      if (touchEv.touches.length > 0) {
+        moveHandler(touchEv.touches[0].clientX, touchEv.touches[0].clientY);
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", cleanup);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", cleanup);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", cleanup);
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", cleanup);
+  };
+
+  const handleStartResize = (clientX: number, itemId: string, initialSize: number) => {
+    const startX = clientX;
+
+    const resizeHandler = (currX: number) => {
+      const deltaX = currX - startX;
+      const newSize = Math.max(14, Math.min(120, initialSize + deltaX));
+      setItems((prev) =>
+        prev.map((it) => (it.id === itemId ? { ...it, sizePx: newSize } : it))
+      );
+    };
+
+    const onMouseMove = (moveEv: MouseEvent) => resizeHandler(moveEv.clientX);
+    const onTouchMove = (touchEv: TouchEvent) => {
+      if (touchEv.touches.length > 0) {
+        resizeHandler(touchEv.touches[0].clientX);
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", cleanup);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", cleanup);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", cleanup);
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", cleanup);
+  };
+
+  // إعادة ضبط المحرر للبدء من جديد
+  const handleReset = () => {
+    setDownloadReady(false);
+    setFinalDownloadUrl(null);
+    setActivePageImage(null);
+    setOriginalFile(null);
+    setTotalPages(0);
+    setItems([]);
+    setMode(null);
   };
 
   return (
-    <div className="min-h-screen bg-[#070b12] text-slate-100 font-sans relative flex flex-col justify-between" dir="rtl">
+    <div className="min-h-screen bg-[#070b12] text-slate-100 font-sans selection:bg-purple-500 selection:text-white relative" dir="rtl">
+      <div className="absolute top-0 right-1/4 w-[500px] h-[350px] bg-purple-600/10 blur-[130px] rounded-full pointer-events-none" />
+
       {/* Header */}
-      <header className="max-w-4xl mx-auto w-full px-4 py-4 flex items-center justify-between border-b border-slate-900">
-        <Link href="/" className="flex items-center gap-2 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors">
-          <ArrowRight className="w-4 h-4" /> العودة للرئيسية
+      <header className="relative z-30 max-w-6xl mx-auto px-4 py-4 flex items-center justify-between border-b border-slate-900">
+        <Link
+          href="/"
+          className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition px-3 py-2 rounded-xl bg-slate-900/60 border border-slate-800"
+        >
+          <ArrowRight className="w-4 h-4" /> الرئيسية
         </Link>
-        <span className="font-black text-lg tracking-tight text-white">
-          apdf<span className="text-purple-400">.app</span>
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-black text-lg tracking-tight text-white">
+            apdf<span className="text-purple-400">.app</span>
+          </span>
+          <div className="w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400 border border-purple-500/20">
+            <FileSignature className="w-4 h-4" />
+          </div>
+        </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-3xl mx-auto px-4 py-8 space-y-10 flex-1 w-full">
-        {/* مقدمة الأداة */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold">
-            <FileSignature className="w-3.5 h-3.5" /> أداة التوقيع والتحرير
+      <main className="relative z-20 max-w-4xl mx-auto px-3 py-6">
+        {processing && (
+          <div className="fixed inset-0 z-50 bg-[#070b12]/80 backdrop-blur-md flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+            <span className="text-sm font-bold text-white">{statusMsg || "جاري المعالجة..."}</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white">محرر وتوقيع مستندات PDF أونلاين</h1>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto leading-relaxed">
-            وقع على عقودك وأوراقك مباشرة باللمس أو الماوس، وأضف نصوصاً وملاحظات فورية محلياً داخل متصفحك بأعلى معايير الأمان والخصوصية.
-          </p>
-        </div>
+        )}
 
-        {/* لوحة التحرير والتوقيع */}
-        <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 sm:p-6 space-y-4 shadow-xl">
-          {!file ? (
-            <label className="border-2 border-dashed border-slate-800 hover:border-purple-500/50 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors bg-slate-900/20 hover:bg-slate-900/40">
-              <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/20">
-                <Upload className="w-5 h-5" />
+        {/* 🌟 شاشة التحميل المستقلة والبانر الإعلاني عند اكتمال العمل 🌟 */}
+        {downloadReady && finalDownloadUrl ? (
+          <div className="max-w-xl mx-auto space-y-6 pt-2 animate-in fade-in zoom-in-95 duration-200">
+            {/* 📢 مربع البانر الإعلاني (AdSense / Sponsor Area) */}
+            <div className="w-full bg-slate-900/70 border border-dashed border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center text-center min-h-[120px] sm:min-h-[160px] relative overflow-hidden group">
+              <span className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mb-1">
+                إعلان / Sponsored Ad
+              </span>
+              {/* هنا يتم وضع كود جوجل أدسنس لاحقاً */}
+              <div className="text-xs text-slate-400 flex flex-col items-center justify-center gap-1">
+                <span className="font-bold text-slate-300">مساحة إعلانية جاهزة</span>
+                <span className="text-[11px] text-slate-500">Google AdSense Responsive Banner</span>
               </div>
-              <span className="text-xs sm:text-sm font-bold text-white">اضغط لاختيار ملف PDF للتعديل أو اسحبه هنا</span>
-              <span className="text-[11px] text-slate-400">يمكنك أيضاً استخدام اللوحة أدناه لإنشاء توقيع فوري</span>
-              <input type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" />
-            </label>
-          ) : (
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-              <span className="text-xs font-medium text-purple-300 truncate max-w-xs">{fileName}</span>
-              <button onClick={() => setFile(null)} className="text-xs text-rose-400 hover:underline">
-                تغيير الملف
-              </button>
-            </div>
-          )}
-
-          {/* شريط أدوات الرسم والكتابة */}
-          <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-slate-900">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setToolMode("draw")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${
-                  toolMode === "draw" ? "bg-purple-600 text-white" : "bg-slate-900 text-slate-400 hover:text-white"
-                }`}
-              >
-                <PenTool className="w-3.5 h-3.5" /> قلم التوقيع
-              </button>
-              <button
-                type="button"
-                onClick={() => setToolMode("text")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors ${
-                  toolMode === "text" ? "bg-purple-600 text-white" : "bg-slate-900 text-slate-400 hover:text-white"
-                }`}
-              >
-                <Type className="w-3.5 h-3.5" /> نص إضافي
-              </button>
             </div>
 
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={undoLast}
-                className="p-2 rounded-lg bg-slate-900 text-slate-400 hover:text-white transition-colors"
-                title="تراجع"
-              >
-                <Undo2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={clearCanvas}
-                className="p-2 rounded-lg bg-slate-900 text-rose-400 hover:bg-rose-500/20 transition-colors"
-                title="مسح اللوحة"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {toolMode === "text" && (
-            <input
-              type="text"
-              placeholder="اكتب النص هنا ثم انقر على اللوحة لإضافته..."
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              className="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors"
-            />
-          )}
-
-          {/* مساحة اللوحة */}
-          <div className="w-full border border-slate-800 rounded-xl overflow-hidden bg-slate-950/90 relative touch-none">
-            <canvas
-              ref={canvasRef}
-              width={700}
-              height={320}
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={stopDrawing}
-              onMouseLeave={stopDrawing}
-              onTouchStart={startDrawing}
-              onTouchMove={draw}
-              onTouchEnd={stopDrawing}
-              className="w-full h-56 sm:h-72 cursor-crosshair"
-            />
-            <span className="absolute bottom-2 right-3 text-[10px] text-slate-600 pointer-events-none select-none">
-              ارسم توقيعك هنا باللمس أو الماوس
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={downloadSignature}
-            className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm py-3 rounded-xl transition-all flex items-center justify-center gap-2 active:scale-[0.98] shadow-lg shadow-purple-600/20"
-          >
-            <Download className="w-4 h-4" /> حفظ وتحميل التوقيع (PNG)
-          </button>
-        </div>
-
-        {/* قسم الدليل ومحتوى السيو أسفل الأداة */}
-        <section className="space-y-6 pt-2 text-xs sm:text-sm leading-relaxed text-slate-300">
-          <div className="space-y-3">
-            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-purple-400" /> كيفية تعديل وتوقيع ملفات PDF أونلاين
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-3.5 space-y-1">
-                <span className="text-[10px] font-black px-2 py-0.5 rounded bg-purple-500/20 text-purple-400">1. رفع الملف</span>
-                <h3 className="font-bold text-white text-xs">اختر مستندك</h3>
-                <p className="text-slate-400 text-[11px]">ارفع ملف الـ PDF الذي ترغب في توقيعه أو تعبئة بياناته مباشرة من جهازك.</p>
+            {/* بطاقة التهنئة وزر التحميل الرئيسي */}
+            <div className="bg-slate-950/80 border border-slate-800 rounded-3xl p-6 sm:p-8 text-center space-y-6 shadow-2xl relative">
+              <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto shadow-[0_0_30px_rgba(16,185,129,0.2)]">
+                <CheckCircle2 className="w-8 h-8" />
               </div>
-              <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-3.5 space-y-1">
-                <span className="text-[10px] font-black px-2 py-0.5 rounded bg-purple-500/20 text-purple-400">2. التعديل والإضافة</span>
-                <h3 className="font-bold text-white text-xs">أضف التوقيع والنصوص</h3>
-                <p className="text-slate-400 text-[11px]">ارسم توقيعك باللمس أو الفأرة، وأضف نصوصاً وملاحظات وحدد المكان بدقة.</p>
+
+              <div className="space-y-1.5">
+                <h2 className="text-xl sm:text-2xl font-black text-white">تم تجهيز ملفك بنجاح!</h2>
+                <p className="text-xs sm:text-sm text-slate-400">
+                  تم حفظ كافة النصوص والتواقيع في موضعها الدقيق وأصبح الملف جاهزاً للتحميل.
+                </p>
               </div>
-              <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-3.5 space-y-1">
-                <span className="text-[10px] font-black px-2 py-0.5 rounded bg-purple-500/20 text-purple-400">3. الحفظ الفوري</span>
-                <h3 className="font-bold text-white text-xs">تحميل التوقيع</h3>
-                <p className="text-slate-400 text-[11px]">احفظ التعديلات ونزّل التوقيع بنقرة واحدة بجودة عالية وبدون علامة مائية.</p>
+
+              {/* زر التحميل الكبير المريح للجوال */}
+              <div className="space-y-3 pt-2">
+                <a
+                  href={finalDownloadUrl}
+                  download={outputFileName}
+                  className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/20 active:scale-95 transition-all"
+                >
+                  <Download className="w-5 h-5" /> اضغط هنا لتحميل الملف (PDF)
+                </a>
+
+                <button
+                  onClick={handleReset}
+                  className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-xs flex items-center justify-center gap-2 border border-slate-800 transition"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> تعديل ملف آخر
+                </button>
               </div>
             </div>
           </div>
+        ) : (
+          /* باقي مراحل المحرر السابقة */
+          <>
+            {/* 1. اختيار المسار */}
+            {!mode && (
+              <div className="max-w-xl mx-auto text-center space-y-6 pt-6">
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-xs font-bold">
+                    <Sparkles className="w-3.5 h-3.5" /> محرر الجوال السريع
+                  </div>
+                  <h1 className="text-2xl sm:text-3xl font-black text-white">
+                    تعديل وتوقيع <span className="text-purple-400">المستندات</span>
+                  </h1>
+                  <p className="text-slate-400 text-xs">
+                    اختر نوع المستند للبدء:
+                  </p>
+                </div>
 
-          <div className="bg-slate-950/50 border border-slate-900 rounded-xl p-4 space-y-3">
-            <h2 className="text-sm font-bold text-white">مميزات أداة تحرير وتوقيع PDF</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-white">توقيع رقمي آمن 100%</h4>
-                  <p className="text-slate-400 text-[11px]">معالجة محلية داخل المتصفح، لا يتم حفظ أو رفع مستنداتك لأي خادم خارجي.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-right">
+                  <button
+                    onClick={() => setMode("single")}
+                    className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-purple-500/60 transition flex flex-col justify-between h-[160px]"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white mb-0.5">صفحة واحدة أو صورة</h3>
+                      <p className="text-[11px] text-slate-400">تعديل فوري على شهادة أو فاتورة</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setMode("multi")}
+                    className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-emerald-500/60 transition flex flex-col justify-between h-[160px]"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                      <Files className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white mb-0.5">مستند متعدد الصفحات</h3>
+                      <p className="text-[11px] text-slate-400">اختيار صفحة محددة لتعديلها واستبدالها</p>
+                    </div>
+                  </button>
                 </div>
               </div>
-              <div className="flex items-start gap-2">
-                <Zap className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-white">متوافق مع الهواتف والشاشات اللمسية</h4>
-                  <p className="text-slate-400 text-[11px]">واجهة سلسة تدعم التوقيع بالإصبع أو بالقلم الذكي على كافة الأجهزة المحمولة.</p>
+            )}
+
+            {/* 2. رفع الملف */}
+            {mode && !activePageImage && totalPages === 0 && (
+              <div className="max-w-md mx-auto space-y-4 pt-4">
+                <button
+                  onClick={() => {
+                    setMode(null);
+                    setOriginalFile(null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> تغيير نوع المستند
+                </button>
+
+                <label className="border-2 border-dashed border-slate-800 hover:border-purple-500/60 rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer transition bg-slate-950/60 text-center shadow-xl group">
+                  <div className="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-3">
+                    <UploadCloud className="w-7 h-7" />
+                  </div>
+                  <span className="text-sm font-bold text-white mb-1">
+                    {mode === "single" ? "اختر صورة أو ملف PDF" : "اختر ملف PDF متعدد الصفحات"}
+                  </span>
+                  <span className="text-[11px] text-slate-500">من ألبوم الصور أو ملفات الجهاز</span>
+                  <input
+                    type="file"
+                    accept={mode === "single" ? ".pdf,image/*" : ".pdf"}
+                    onChange={mode === "single" ? handleSingleUpload : handleMultiUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            )}
+
+            {/* 3. شبكة الصفحات */}
+            {mode === "multi" && !activePageImage && totalPages > 0 && (
+              <div className="space-y-4">
+                <div className="bg-slate-950/70 border border-slate-800 p-4 rounded-xl">
+                  <h2 className="text-sm font-bold text-white">صفحات المستند ({totalPages})</h2>
+                  <p className="text-[11px] text-slate-400">المس أي صفحة لبدء الكتابة والتوقيع عليها:</p>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {Array.from({ length: totalPages }, (_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => choosePageToEdit(i)}
+                      className="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-purple-500 transition flex flex-col items-center justify-center gap-1.5"
+                    >
+                      <FileText className="w-6 h-6 text-slate-500" />
+                      <span className="text-xs font-bold text-slate-200">صفحة {i + 1}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
-            </div>
-          </div>
+            )}
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
-              <HelpCircle className="w-4 h-4 text-purple-400" /> أسئلة شائعة حول التوقيع وتعديل المستندات
-            </h2>
-            <div className="space-y-2">
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-900 space-y-1">
-                <h3 className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> هل التوقيع عبر المنصة معتمد ومجاني؟
-                </h3>
-                <p className="text-slate-400 text-xs pr-5">نعم، يمكنك استخدامه لتوقيع الاستمارات والعقود واستخراجه بجودة فائقة دون دفع أي رسوم.</p>
+            {/* 4. مساحة التعديل المخصصة للجوال */}
+            {activePageImage && (
+              <div className="space-y-4">
+                {/* شريط الإجراءات العلوي */}
+                <div className="flex items-center justify-between gap-2 bg-slate-950/90 border border-slate-800 p-2.5 rounded-2xl backdrop-blur-md">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setShowTextInputModal(true)}
+                      className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 bg-purple-600 hover:bg-purple-500 text-white shadow-md transition"
+                    >
+                      <Type className="w-3.5 h-3.5" /> كتابة نص
+                    </button>
+
+                    <button
+                      onClick={() => setActiveTool(activeTool === "signature" ? null : "signature")}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 border transition ${
+                        activeTool === "signature"
+                          ? "bg-purple-500 text-slate-950 border-purple-400"
+                          : "bg-slate-900 text-slate-300 border-slate-800"
+                      }`}
+                    >
+                      <PenTool className="w-3.5 h-3.5" /> توقيع
+                    </button>
+
+                    <label className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 border bg-slate-900 text-slate-300 border-slate-800 cursor-pointer">
+                      <ImageIcon className="w-3.5 h-3.5" /> ختم
+                      <input type="file" accept="image/*" onChange={handleStampUpload} className="hidden" />
+                    </label>
+                  </div>
+
+                  <button
+                    onClick={handleCommitEdit}
+                    disabled={processing}
+                    className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1 shadow-lg shadow-emerald-500/20"
+                  >
+                    <Check className="w-3.5 h-3.5" /> حفظ الملف
+                  </button>
+                </div>
+
+                {/* شريط تحكم سريع بالعنصر المختار */}
+                {selectedItem && (
+                  <div className="p-2.5 bg-slate-900/95 border border-purple-500/30 rounded-xl flex items-center justify-between gap-2 text-xs">
+                    {selectedItem.type === "text" && (
+                      <div className="flex items-center gap-3 w-full">
+                        <span className="text-[11px] text-purple-400 font-bold whitespace-nowrap">حجم الخط:</span>
+                        <input
+                          type="range"
+                          min={14}
+                          max={72}
+                          value={selectedItem.sizePx}
+                          onChange={(e) => {
+                            const newSz = Number(e.target.value);
+                            setItems((prev) =>
+                              prev.map((it) => (it.id === selectedItem.id ? { ...it, sizePx: newSz } : it))
+                            );
+                          }}
+                          className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                        />
+                        <span className="text-[11px] font-bold text-slate-300 w-8">{selectedItem.sizePx}px</span>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setItems((prev) =>
+                              prev.map((it) =>
+                                it.id === selectedItem.id ? { ...it, isBold: !it.isBold } : it
+                              )
+                            );
+                          }}
+                          className={`p-1.5 rounded-lg border text-xs font-bold transition ${
+                            selectedItem.isBold
+                              ? "bg-purple-600 text-white border-purple-500"
+                              : "bg-slate-800 text-slate-400 border-slate-700"
+                          }`}
+                          title="سميك"
+                        >
+                          <Bold className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setItems((prev) => prev.filter((i) => i.id !== selectedItem.id));
+                        setSelectedItemId(null);
+                      }}
+                      className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition"
+                      title="حذف"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* نافذة الجوال المنبثقة */}
+                {showTextInputModal && (
+                  <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-5 space-y-4 shadow-2xl">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span className="text-sm font-bold text-white flex items-center gap-1.5">
+                          <Type className="w-4 h-4 text-purple-400" /> إضافة نص جديد
+                        </span>
+                        <button
+                          onClick={() => setShowTextInputModal(false)}
+                          className="text-slate-400 hover:text-white"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="اكتب النص هنا..."
+                        value={rawText}
+                        onChange={(e) => setRawText(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 text-right"
+                      />
+
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="space-y-1">
+                          <span className="text-[11px] font-bold text-slate-400">اللون:</span>
+                          <div className="flex items-center gap-2">
+                            {[
+                              { color: "#000000", label: "أسود" },
+                              { color: "#1e40af", label: "أزرق" },
+                              { color: "#b91c1c", label: "أحمر" },
+                              { color: "#ffffff", label: "أبيض" },
+                            ].map((c) => (
+                              <button
+                                key={c.color}
+                                type="button"
+                                onClick={() => setSelectedColor(c.color)}
+                                style={{ backgroundColor: c.color }}
+                                className={`w-7 h-7 rounded-full border-2 transition ${
+                                  selectedColor === c.color ? "border-purple-400 scale-110 shadow-md" : "border-slate-600"
+                                }`}
+                                title={c.label}
+                              />
+                            ))}
+                            <input
+                              type="color"
+                              value={selectedColor}
+                              onChange={(e) => setSelectedColor(e.target.value)}
+                              className="w-7 h-7 rounded-full cursor-pointer bg-transparent border-0"
+                              title="لون مخصص"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1 flex flex-col items-center">
+                          <span className="text-[11px] font-bold text-slate-400">السمك:</span>
+                          <button
+                            type="button"
+                            onClick={() => setIsBoldText(!isBoldText)}
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl border text-xs font-bold transition ${
+                              isBoldText
+                                ? "bg-purple-600 text-white border-purple-500"
+                                : "bg-slate-950 text-slate-400 border-slate-700"
+                            }`}
+                          >
+                            <Bold className="w-3.5 h-3.5" /> سميك
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleConfirmTextInsert}
+                        disabled={!rawText.trim()}
+                        className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold py-2.5 rounded-xl text-xs transition"
+                      >
+                        إدراج النص على المستند
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* لوحة التوقيع */}
+                {activeTool === "signature" && (
+                  <div className="p-3 bg-slate-900 border border-slate-800 rounded-2xl space-y-2">
+                    <span className="text-xs font-bold text-slate-300">ارسم توقيعك بإصبعك أدناه:</span>
+                    <canvas
+                      ref={sigCanvasRef}
+                      width={350}
+                      height={130}
+                      onMouseDown={(e) => {
+                        const ctx = sigCanvasRef.current?.getContext("2d");
+                        if (!ctx) return;
+                        setIsDrawing(true);
+                        ctx.beginPath();
+                        ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+                      }}
+                      onMouseMove={(e) => {
+                        if (!isDrawing) return;
+                        const ctx = sigCanvasRef.current?.getContext("2d");
+                        if (!ctx) return;
+                        ctx.strokeStyle = "#000000";
+                        ctx.lineWidth = 2.5;
+                        ctx.lineCap = "round";
+                        ctx.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+                        ctx.stroke();
+                      }}
+                      onMouseUp={() => setIsDrawing(false)}
+                      onTouchStart={(e) => {
+                        const canvas = sigCanvasRef.current;
+                        if (!canvas) return;
+                        const rect = canvas.getBoundingClientRect();
+                        const touch = e.touches[0];
+                        const ctx = canvas.getContext("2d");
+                        if (!ctx) return;
+                        setIsDrawing(true);
+                        ctx.beginPath();
+                        ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
+                      }}
+                      onTouchMove={(e) => {
+                        if (!isDrawing) return;
+                        const canvas = sigCanvasRef.current;
+                        if (!canvas) return;
+                        const rect = canvas.getBoundingClientRect();
+                        const touch = e.touches[0];
+                        const ctx = canvas.getContext("2d");
+                        if (!ctx) return;
+                        ctx.strokeStyle = "#000000";
+                        ctx.lineWidth = 2.5;
+                        ctx.lineCap = "round";
+                        ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+                        ctx.stroke();
+                      }}
+                      onTouchEnd={() => setIsDrawing(false)}
+                      className="bg-white border border-slate-700 rounded-xl cursor-crosshair w-full max-w-[350px] touch-none"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveSignature}
+                        className="bg-purple-500 text-slate-950 px-3 py-1.5 rounded-lg text-xs font-bold"
+                      >
+                        اعتماد
+                      </button>
+                      <button
+                        onClick={() => {
+                          const ctx = sigCanvasRef.current?.getContext("2d");
+                          ctx?.clearRect(0, 0, 350, 130);
+                        }}
+                        className="bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg text-xs"
+                      >
+                        مسح
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* مساحة المستند */}
+                <div
+                  onClick={() => setSelectedItemId(null)}
+                  className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-2 min-h-[450px]"
+                >
+                  <div
+                    ref={previewWrapperRef}
+                    style={{ direction: "ltr" }}
+                    className="relative inline-block select-none shadow-2xl"
+                  >
+                    <img
+                      src={activePageImage}
+                      alt="الصفحة"
+                      className="max-w-full max-h-[75vh] block rounded-lg pointer-events-none"
+                    />
+
+                    {items.map((item) => {
+                      const isSelected = selectedItemId === item.id;
+                      return (
+                        <div
+                          key={item.id}
+                          style={{
+                            left: `${item.percentX * 100}%`,
+                            top: `${item.percentY * 100}%`,
+                            position: "absolute",
+                            touchAction: "none",
+                          }}
+                          className={`cursor-move select-none p-1 transition-all ${
+                            isSelected ? "border border-purple-400/80 rounded" : ""
+                          }`}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            handleStartMove(e.clientX, e.clientY, item.id, item.percentX, item.percentY);
+                          }}
+                          onTouchStart={(e) => {
+                            e.stopPropagation();
+                            if (e.touches.length > 0) {
+                              handleStartMove(
+                                e.touches[0].clientX,
+                                e.touches[0].clientY,
+                                item.id,
+                                item.percentX,
+                                item.percentY
+                              );
+                            }
+                          }}
+                        >
+                          {item.type === "text" ? (
+                            <span
+                              style={{
+                                fontSize: `${item.sizePx}px`,
+                                color: item.color || "#000000",
+                                fontWeight: item.isBold ? 900 : 400,
+                              }}
+                              className="whitespace-nowrap block leading-tight px-1 drop-shadow-sm select-none"
+                            >
+                              {item.content}
+                            </span>
+                          ) : (
+                            <img
+                              src={item.content}
+                              alt="عنصر"
+                              style={{ width: `${item.sizePx}px` }}
+                              className="pointer-events-none block"
+                            />
+                          )}
+
+                          {isSelected && (
+                            <div
+                              className="absolute -bottom-2 -left-2 w-5 h-5 bg-purple-500 hover:bg-white rounded-full border-2 border-slate-900 cursor-ew-resize shadow-md flex items-center justify-center touch-none"
+                              title="اسحب لتكبير/تصغير الحجم"
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                handleStartResize(e.clientX, item.id, item.sizePx);
+                              }}
+                              onTouchStart={(e) => {
+                                e.stopPropagation();
+                                if (e.touches.length > 0) {
+                                  handleStartResize(e.touches[0].clientX, item.id, item.sizePx);
+                                }
+                              }}
+                            >
+                              <span className="w-1.5 h-1.5 bg-white rounded-full pointer-events-none" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-900 space-y-1">
-                <h3 className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> هل يضع الموقع علامة مائية على توقيعي؟
-                </h3>
-                <p className="text-slate-400 text-xs pr-5">لا، التصدير يكون بخلفية شفافة ونقية بدون أي شعار أو علامة مائية تخص الموقع.</p>
-              </div>
-            </div>
-          </div>
-        </section>
+            )}
+          </>
+        )}
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-900 py-6 bg-slate-950/70 text-center text-xs text-slate-500">
-        © {new Date().getFullYear()} apdf.app - جميع الحقوق محفوظة.
-      </footer>
     </div>
   );
 }

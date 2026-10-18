@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import PrintPdfTool from "./print-pdf-tool";
 
 export const metadata: Metadata = {
-  title: "طباعة PDF والصور أونلاين - كشف طابعات الواي فاي والشبكة مباشرة | apdf.app",
+  title: "طباعة PDF والصور أونلاين من الجوال عبر الواي فاي | APDF",
   description:
-    "عاين ملفات PDF والصور واضبط حجم الورق والاتجاه ثم اطبع مباشرة عبر طابعات Wi-Fi أو AirPrint المتصلة بنظامك. معالجة خاصة داخل المتصفح.",
+    "عاين مستندات PDF والصور من الجوال أو الكمبيوتر، واختر A4 أو Letter ثم افتح نافذة الطباعة لاستخدام الطابعات المتاحة عبر Wi-Fi أو AirPrint.",
   keywords: [
     "طباعة PDF أونلاين",
     "طباعة الصور",
@@ -13,9 +13,9 @@ export const metadata: Metadata = {
     "AirPrint",
   ],
   openGraph: {
-    title: "طباعة PDF والصور أونلاين | apdf.app",
+    title: "طباعة PDF والصور أونلاين من الجوال عبر الواي فاي | APDF",
     description:
-      "عاين ملفات PDF والصور واضبط إعدادات الورق واطبع عبر الطابعات المتصلة بجهازك.",
+      "عاين ملفات PDF والصور واضبط حجم الورق، ثم اختر طابعة Wi-Fi أو AirPrint من نافذة النظام.",
     type: "website",
   },
 };

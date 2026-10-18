@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "APDF | أدوات تعديل وتحويل ملفات PDF أونلاين مجاناً",
-  description: "أدوات مجانية وسريعة لمعالجة وتعديل ملفات PDF مباشرة من جهازك: دمج، تقسيم، ضغط، وتحويل بأمان تام وبدون رفع ملفاتك لأي خادم.",
+  description:
+    "منصة apdf.app توفر أدوات للتعامل مع ملفات PDF والصور، مع اختلاف طريقة المعالجة بحسب الأداة المستخدمة.",
 };
 
 export default function RootLayout({

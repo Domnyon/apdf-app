@@ -1,22 +1,55 @@
-import { Readable } from "node:stream";
 import { NextRequest, NextResponse } from "next/server";
 import JSZip from "jszip";
-import {
-  ExportOCRLocale,
-  ExportPDFJob,
-  ExportPDFParams,
-  ExportPDFResult,
-  ExportPDFTargetFormat,
-  MimeType,
-  PDFServices,
-  ServicePrincipalCredentials,
-} from "@adobe/pdfservices-node-sdk";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
+const ADOBE_API_URL = "https://pdf-services.adobe.io";
 const DOCX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const MAX_POLL_ATTEMPTS = 100;
+const POLL_INTERVAL_MS = 1000;
+
+interface AdobeAsset {
+  assetID?: string;
+  downloadUri?: string;
+}
+
+interface AdobeJobStatus {
+  status?: string;
+  asset?: AdobeAsset;
+  error?: { message?: string };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+async function getAdobeError(response: Response): Promise<string> {
+  const body = await response.text();
+  try {
+    const parsed = asRecord(JSON.parse(body) as unknown);
+    const detail =
+      typeof parsed?.message === "string"
+        ? parsed.message
+        : typeof parsed?.error === "string"
+          ? parsed.error
+          : body;
+    return `${response.status} ${detail.slice(0, 500)}`;
+  } catch {
+    return `${response.status} ${body.slice(0, 500)}`;
+  }
+}
+
+function assertHttpsUrl(value: string, label: string): URL {
+  const url = new URL(value);
+  if (url.protocol !== "https:") {
+    throw new Error(`Adobe returned an invalid ${label} URL.`);
+  }
+  return url;
+}
 
 function sanitizeFileName(name: string): string {
   const baseName = name
@@ -25,17 +58,6 @@ function sanitizeFileName(name: string): string {
     .trim()
     .slice(0, 120);
   return `${baseName || "converted"}.docx`;
-}
-
-function readStream(stream: NodeJS.ReadableStream): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    stream.on("data", (chunk: Buffer | Uint8Array | string) => {
-      chunks.push(Buffer.from(chunk));
-    });
-    stream.on("error", reject);
-    stream.on("end", () => resolve(Buffer.concat(chunks)));
-  });
 }
 
 async function validateDocx(buffer: Buffer): Promise<void> {
@@ -97,68 +119,157 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const requestedLocale = formData.get("ocrLocale");
-    const ocrLocale =
-      typeof requestedLocale === "string"
-        ? Object.values(ExportOCRLocale).find(
-            (locale) => locale === requestedLocale
-          )
-        : undefined;
-
-    if (typeof requestedLocale === "string" && !ocrLocale) {
-      return NextResponse.json(
-        { error: "لغة التعرف الضوئي المحددة غير مدعومة." },
-        { status: 400 }
-      );
+    const tokenResponse = await fetch(`${ADOBE_API_URL}/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+      cache: "no-store",
+    });
+    if (!tokenResponse.ok) {
+      throw new Error(`Adobe authentication failed: ${await getAdobeError(tokenResponse)}`);
     }
 
-    const credentials = new ServicePrincipalCredentials({
-      clientId,
-      clientSecret,
-    });
-    const pdfServices = new PDFServices({ credentials });
-    const inputAsset = await pdfServices.upload({
-      readStream: Readable.from(pdfBuffer),
-      mimeType: MimeType.PDF,
-    });
-    const params = new ExportPDFParams({
-      targetFormat: ExportPDFTargetFormat.DOCX,
-      ocrLocale: ocrLocale ?? ExportOCRLocale.EN_US,
-    });
-    const job = new ExportPDFJob({ inputAsset, params });
-    const pollingURL = await pdfServices.submit({ job });
-    const result = await pdfServices.getJobResult({
-      pollingURL,
-      resultType: ExportPDFResult,
-    });
-
-    if (!result.result) {
-      throw new Error("Adobe completed the export without a result asset.");
+    const tokenPayload: unknown = await tokenResponse.json();
+    const tokenRecord = asRecord(tokenPayload);
+    const accessToken = tokenRecord?.access_token;
+    if (typeof accessToken !== "string" || accessToken.length === 0) {
+      throw new Error("Adobe authentication returned no access token.");
     }
 
-    const streamAsset = await pdfServices.getContent({
-      asset: result.result.asset,
+    const adobeHeaders = {
+      Authorization: `Bearer ${accessToken}`,
+      "x-api-key": clientId,
+    };
+
+    const assetResponse = await fetch(`${ADOBE_API_URL}/assets`, {
+      method: "POST",
+      headers: {
+        ...adobeHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ mediaType: "application/pdf" }),
+      cache: "no-store",
     });
-    const docxBuffer = await readStream(streamAsset.readStream);
+    if (!assetResponse.ok) {
+      throw new Error(`Adobe asset creation failed: ${await getAdobeError(assetResponse)}`);
+    }
+
+    const assetPayload: unknown = await assetResponse.json();
+    const assetRecord = asRecord(assetPayload);
+    const assetId = assetRecord?.assetID;
+    const uploadUri = assetRecord?.uploadUri;
+    if (typeof assetId !== "string" || typeof uploadUri !== "string") {
+      throw new Error("Adobe returned incomplete upload details.");
+    }
+
+    const uploadUrl = assertHttpsUrl(uploadUri, "upload");
+    const uploadResponse = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/pdf" },
+      body: new Uint8Array(pdfBuffer),
+      cache: "no-store",
+    });
+    if (!uploadResponse.ok) {
+      throw new Error(`Adobe PDF upload failed: ${await getAdobeError(uploadResponse)}`);
+    }
+
+    const jobResponse = await fetch(`${ADOBE_API_URL}/operation/exportpdf`, {
+      method: "POST",
+      headers: {
+        ...adobeHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ assetID: assetId, targetFormat: "docx" }),
+      cache: "no-store",
+    });
+    if (!jobResponse.ok) {
+      throw new Error(`Adobe DOCX export failed: ${await getAdobeError(jobResponse)}`);
+    }
+
+    const locationHeader = jobResponse.headers.get("location");
+    if (!locationHeader) {
+      throw new Error("Adobe did not return an export job location.");
+    }
+    const jobUrl = assertHttpsUrl(
+      new URL(locationHeader, ADOBE_API_URL).toString(),
+      "job"
+    );
+    if (jobUrl.hostname !== new URL(ADOBE_API_URL).hostname) {
+      throw new Error("Adobe returned an untrusted export job location.");
+    }
+
+    let completedJob: AdobeJobStatus | null = null;
+    for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      }
+
+      const statusResponse = await fetch(jobUrl, {
+        headers: adobeHeaders,
+        cache: "no-store",
+      });
+      if (!statusResponse.ok) {
+        throw new Error(`Adobe export status failed: ${await getAdobeError(statusResponse)}`);
+      }
+
+      const statusPayload: unknown = await statusResponse.json();
+      const statusRecord = asRecord(statusPayload);
+      const status = statusRecord?.status;
+
+      if (status === "done") {
+        const resultAsset = asRecord(statusRecord?.asset) as AdobeAsset | null;
+        if (!resultAsset || typeof resultAsset.downloadUri !== "string") {
+          throw new Error("Adobe completed the export without a download asset.");
+        }
+        completedJob = { status: "done", asset: resultAsset };
+        break;
+      }
+
+      if (status === "failed") {
+        const jobError = asRecord(statusRecord?.error);
+        const message =
+          typeof jobError?.message === "string"
+            ? jobError.message
+            : "Adobe could not convert this PDF.";
+        throw new Error(message);
+      }
+
+      if (status !== "in progress") {
+        throw new Error("Adobe returned an unknown export job status.");
+      }
+    }
+
+    if (!completedJob?.asset?.downloadUri) {
+      throw new Error("Adobe DOCX export did not finish before the timeout.");
+    }
+
+    const downloadUrl = assertHttpsUrl(completedJob.asset.downloadUri, "download");
+    const downloadResponse = await fetch(downloadUrl, { cache: "no-store" });
+    if (!downloadResponse.ok) {
+      throw new Error(`Adobe DOCX download failed: ${await getAdobeError(downloadResponse)}`);
+    }
+
+    const docxBuffer = Buffer.from(await downloadResponse.arrayBuffer());
     await validateDocx(docxBuffer);
 
-    const fileName = sanitizeFileName(uploadedFile.name);
     const responseBuffer = new ArrayBuffer(docxBuffer.byteLength);
     new Uint8Array(responseBuffer).set(docxBuffer);
-
     return new Response(responseBuffer, {
       status: 200,
       headers: {
         "Content-Type": DOCX_CONTENT_TYPE,
         "Content-Length": String(docxBuffer.byteLength),
-        "Content-Disposition": `attachment; filename="converted.docx"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        "Content-Disposition": `attachment; filename="converted.docx"; filename*=UTF-8''${encodeURIComponent(sanitizeFileName(uploadedFile.name))}`,
         "Cache-Control": "no-store",
       },
     });
   } catch (error) {
     console.error("Adobe PDF to Word conversion failed:", error);
     return NextResponse.json(
-      { error: "تعذر تحويل الملف بواسطة Adobe PDF Services. يرجى المحاولة مرة أخرى." },
+      { error: "تعذر تحويل الملف عبر Adobe PDF Services. يرجى المحاولة مرة أخرى." },
       { status: 502 }
     );
   }

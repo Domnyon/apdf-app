@@ -1,127 +1,75 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
 import {
-  Upload,
-  FileText,
-  CheckCircle,
-  Download,
-  X,
   ArrowRight,
-  RefreshCw,
-  AlertCircle,
+  CheckCircle2,
+  Download,
+  FileText,
+  HelpCircle,
+  Loader2,
+  RotateCcw,
+  ShieldCheck,
   Sparkles,
-  FileType,
-  Eye,
-  Info
+  UploadCloud,
+  Zap,
 } from "lucide-react";
 
-const OCR_LANGUAGES = [
-  { value: "en-US", label: "الإنجليزية (الولايات المتحدة)" },
-  { value: "en-GB", label: "الإنجليزية (المملكة المتحدة)" },
-  { value: "fr-FR", label: "الفرنسية" },
-  { value: "de-DE", label: "الألمانية" },
-  { value: "es-ES", label: "الإسبانية" },
-  { value: "it-IT", label: "الإيطالية" },
-  { value: "pt-BR", label: "البرتغالية (البرازيل)" },
-  { value: "pt-PT", label: "البرتغالية (البرتغال)" },
-  { value: "nl-NL", label: "الهولندية" },
-  { value: "ru-RU", label: "الروسية" },
-  { value: "tr-TR", label: "التركية" },
-  { value: "iw-IL", label: "العبرية" },
-  { value: "ja-JP", label: "اليابانية" },
-  { value: "ko-KR", label: "الكورية" },
-  { value: "zh-CN", label: "الصينية المبسطة" },
-  { value: "zh-Hant", label: "الصينية التقليدية" },
-] as const;
+const DOCX_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+function getResponseError(value: unknown): string | null {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "error" in value &&
+    typeof value.error === "string"
+  ) {
+    return value.error;
+  }
+  return null;
+}
 
 export default function PdfToWordPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [fileUrl, setFileUrl] = useState<string>("");
-  const fileUrlRef = useRef<string>("");
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [stage, setStage] = useState<"upload" | "preview" | "download">("upload");
-
-  // ملف الـ Word المحول
+  const [isDragging, setIsDragging] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [downloadBlob, setDownloadBlob] = useState<Blob | null>(null);
-  const [error, setError] = useState<string>("");
-  const [ocrLocale, setOcrLocale] = useState("en-US");
-
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(
-    () => () => {
-      if (fileUrlRef.current) URL.revokeObjectURL(fileUrlRef.current);
-    },
-    []
-  );
+  const selectFile = (selectedFile: File | undefined) => {
+    if (!selectedFile) return;
+    setError(null);
+    setDownloadBlob(null);
 
-  const updateFilePreview = (nextFile: File | null) => {
-    if (fileUrlRef.current) URL.revokeObjectURL(fileUrlRef.current);
-    fileUrlRef.current = nextFile ? URL.createObjectURL(nextFile) : "";
-    setFileUrl(fileUrlRef.current);
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      validateAndSetFile(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      validateAndSetFile(e.target.files[0]);
-    }
-  };
-
-  const validateAndSetFile = (selectedFile: File) => {
-    if (selectedFile.type === "application/pdf" || selectedFile.name.toLowerCase().endsWith(".pdf")) {
-      updateFilePreview(selectedFile);
-      setFile(selectedFile);
-      setError("");
-      setDownloadBlob(null);
-      setStage("upload");
-    } else {
-      updateFilePreview(null);
+    if (
+      selectedFile.type !== "application/pdf" &&
+      !selectedFile.name.toLowerCase().endsWith(".pdf")
+    ) {
       setFile(null);
       setError("يرجى اختيار ملف بصيغة PDF فقط.");
+      return;
     }
+
+    setFile(selectedFile);
   };
 
-  const resetAll = () => {
-    updateFilePreview(null);
-    setFile(null);
-    setDownloadBlob(null);
-    setError("");
-    setStage("upload");
-    setOcrLocale("en-US");
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  const handleFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
+    selectFile(event.target.files?.[0]);
+    event.target.value = "";
   };
 
   const handleConvert = async () => {
     if (!file) return;
 
     setLoading(true);
-    setError("");
+    setError(null);
 
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("ocrLocale", ocrLocale);
 
       const response = await fetch("/api/pdf-to-word", {
         method: "POST",
@@ -130,24 +78,14 @@ export default function PdfToWordPage() {
 
       if (!response.ok) {
         const responseBody: unknown = await response.json().catch(() => null);
-        const message =
-          typeof responseBody === "object" &&
-          responseBody !== null &&
-          "error" in responseBody &&
-          typeof responseBody.error === "string"
-            ? responseBody.error
-            : "تعذر إكمال التحويل عبر الخادم. يرجى المحاولة بعد لحظات.";
-        throw new Error(message);
+        throw new Error(
+          getResponseError(responseBody) ??
+            "تعذر تحويل الملف. يرجى المحاولة مرة أخرى."
+        );
       }
 
       const contentType = response.headers.get("content-type") ?? "";
-      if (
-        !contentType
-          .toLowerCase()
-          .includes(
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          )
-      ) {
+      if (!contentType.toLowerCase().includes(DOCX_CONTENT_TYPE)) {
         throw new Error("استجابة التحويل ليست ملف Word صالحاً.");
       }
 
@@ -158,21 +96,16 @@ export default function PdfToWordPage() {
       }
 
       setDownloadBlob(blob);
-      setStage("preview");
-    } catch (err: unknown) {
-      console.error(err);
+    } catch (conversionError: unknown) {
+      console.error("PDF to Word conversion failed:", conversionError);
       setError(
-        err instanceof Error
-          ? err.message
-          : "حدث خطأ أثناء معالجة الملف. يرجى المحاولة مرة أخرى."
+        conversionError instanceof Error
+          ? conversionError.message
+          : "حدث خطأ أثناء تحويل الملف. يرجى المحاولة مرة أخرى."
       );
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleProceedToDownload = () => {
-    setStage("download");
   };
 
   const triggerDownload = () => {
@@ -181,224 +114,362 @@ export default function PdfToWordPage() {
     const url = URL.createObjectURL(downloadBlob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = file.name.replace(/\.[^/.]+$/, "") + ".docx";
+    link.download = `${file.name.replace(/\.pdf$/i, "") || "converted"}.docx`;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  const reset = () => {
+    setFile(null);
+    setDownloadBlob(null);
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   return (
-    <div className="min-h-screen bg-[#F8F9FD] flex flex-col font-sans" dir="rtl">
-      <header className="bg-white border-b border-gray-200 py-3.5 px-4 sm:px-6 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link href="/" className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 hover:text-red-600 transition">
-            <ArrowRight className="w-4 h-4" />
-            العودة لجميع الأدوات
-          </Link>
-          <span className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-red-600 bg-red-50 px-2.5 sm:px-3 py-1 rounded-full border border-red-100">
-            <Sparkles className="w-3.5 h-3.5" />
-            محرك Adobe الذكي لمستندات Office
+    <div
+      className="relative flex min-h-screen w-full max-w-full flex-col overflow-x-hidden bg-[#070b12] font-sans text-slate-100 selection:bg-purple-500 selection:text-white"
+      dir="rtl"
+    >
+      <div className="pointer-events-none absolute right-1/4 top-0 h-[350px] w-[500px] max-w-full overflow-hidden rounded-full bg-purple-600/10 blur-[130px]" />
+
+      <header className="relative z-30 mx-auto flex w-full max-w-6xl items-center justify-between border-b border-slate-900 px-4 py-4">
+        <Link
+          href="/"
+          className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs font-semibold text-slate-400 transition hover:text-white"
+        >
+          <ArrowRight className="h-4 w-4" />
+          <span>الرئيسية</span>
+        </Link>
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-black tracking-tight text-white">
+            apdf<span className="text-purple-400">.app</span>
           </span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-purple-500/20 bg-purple-500/10 text-purple-400">
+            <FileText className="h-4 w-4" />
+          </div>
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-3 sm:p-8">
-        {stage === "upload" && (
-          <div className="w-full max-w-4xl text-center space-y-5 sm:space-y-6">
-            {!file ? (
-              <>
-                <div className="space-y-2">
-                  <h1 className="text-2xl sm:text-4xl font-black text-gray-900">
-                    تحويل PDF إلى WORD
-                  </h1>
-                  <p className="text-xs sm:text-base text-gray-600 max-w-xl mx-auto px-2">
-                    تحويل رسمي دقيق يحافظ على الخطوط العربية، الجداول، ومربعات النماذج مع معاينة مباشرة قبل التنزيل.
+      <main className="relative z-20 mx-auto flex w-full max-w-4xl flex-1 flex-col space-y-12 px-3 py-8">
+        {loading && (
+          <div
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[#070b12]/85 p-5 text-center backdrop-blur-md"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-9 w-9 animate-spin text-purple-400" />
+            <span className="text-sm font-bold text-white">
+              جاري تحويل المستند ومعالجة النصوص العربية...
+            </span>
+          </div>
+        )}
+
+        <section className="mx-auto w-full max-w-2xl space-y-7">
+          <div className="space-y-2 text-center">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-xs font-bold text-purple-400">
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>تحويل PDF إلى Word بسهولة</span>
+            </div>
+            <h1 className="text-2xl font-black text-white sm:text-3xl">
+              تحويل PDF إلى <span className="text-purple-400">Word</span>
+            </h1>
+            <p className="text-xs leading-6 text-slate-400 sm:text-sm">
+              حوّل مستندات PDF إلى ملفات DOCX قابلة للتحرير مع الحفاظ على
+              النصوص والتنسيق قدر الإمكان.
+            </p>
+          </div>
+
+          {downloadBlob ? (
+            <div className="space-y-6">
+              <div className="flex min-h-[120px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/70 p-4 text-center sm:min-h-[160px]">
+                <span className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  إعلان / Sponsored Ad
+                </span>
+                <div className="flex flex-col items-center gap-1 text-xs text-slate-400">
+                  <span className="font-bold text-slate-300">مساحة إعلانية جاهزة</span>
+                  <span className="text-[11px] text-slate-500">
+                    Google AdSense Responsive Banner
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-6 rounded-3xl border border-slate-800 bg-slate-950/80 p-6 text-center shadow-2xl sm:p-8">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                  <CheckCircle2 className="h-8 w-8" />
+                </div>
+                <div className="space-y-1.5">
+                  <h2 className="text-xl font-black text-white sm:text-2xl">
+                    تم تحويل المستند بنجاح!
+                  </h2>
+                  <p className="break-words text-xs text-slate-400 sm:text-sm">
+                    أصبح ملف Word جاهزاً للتنزيل:{" "}
+                    {file?.name.replace(/\.pdf$/i, "") || "converted"}.docx
                   </p>
                 </div>
-
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={triggerDownload}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-purple-600 px-6 py-4 text-base font-black text-white shadow-xl shadow-purple-600/20 transition-all hover:bg-purple-500 active:scale-95"
+                  >
+                    <Download className="h-5 w-5" />
+                    <span>تحميل ملف Word (DOCX)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={reset}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs font-bold text-slate-300 transition hover:bg-slate-800"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    <span>تحويل ملف آخر</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {!file ? (
                 <div
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  className={`w-full max-w-3xl mx-auto border-2 border-dashed rounded-3xl p-8 sm:p-16 text-center transition-all bg-white shadow-xs flex flex-col items-center justify-center gap-4 sm:gap-5 ${
-                    isDragging ? "border-red-500 bg-red-50/50 scale-[1.01]" : "border-gray-300"
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDragLeave={(event) => {
+                    event.preventDefault();
+                    setIsDragging(false);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setIsDragging(false);
+                    selectFile(event.dataTransfer.files[0]);
+                  }}
+                  className={`rounded-3xl border-2 border-dashed p-8 text-center shadow-xl transition sm:p-12 ${
+                    isDragging
+                      ? "border-purple-400 bg-purple-500/10"
+                      : "border-slate-800 bg-slate-950/60 hover:border-purple-500/60"
                   }`}
                 >
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileInput}
-                    accept=".pdf"
-                    className="hidden"
-                  />
-
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-6 sm:px-8 py-4 sm:py-5 bg-[#E5322D] hover:bg-[#c92520] active:scale-95 text-white font-bold text-lg sm:text-xl rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center gap-3"
-                  >
-                    <Upload className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
-                    <span>حدد ملف PDF</span>
-                  </button>
-
-                  <p className="text-xs sm:text-sm font-medium text-gray-500">
-                    أو أسقط ملف الـ PDF هنا
-                  </p>
-
-                  <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200/80 px-3.5 py-2 rounded-xl text-amber-800 text-[11px] sm:text-xs font-semibold shadow-xs">
-                    <Info className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600 shrink-0" />
-                    <span>تنبيه: تأكد بأن يكون ملف PDF نصياً وليس صورة ممسوحة ضوئياً (Scanner).</span>
-                  </div>
+                  <label className="flex cursor-pointer flex-col items-center justify-center">
+                    <span className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-purple-500/20 bg-purple-500/10 text-purple-400">
+                      <UploadCloud className="h-7 w-7" />
+                    </span>
+                    <span className="mb-1 text-sm font-bold text-white">
+                      اسحب ملف PDF وأفلته هنا
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      أو اضغط لاختيار ملف من جهازك
+                    </span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      onChange={handleFileInput}
+                      className="sr-only"
+                      aria-label="اختيار ملف PDF"
+                    />
+                  </label>
                 </div>
-              </>
-            ) : (
-              <div className="w-full max-w-2xl mx-auto bg-white border border-gray-200 rounded-3xl p-5 sm:p-8 shadow-xs space-y-5 sm:space-y-6">
-                <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl p-4">
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-100 text-red-600 rounded-xl flex items-center justify-center shrink-0">
-                      <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
-                    </div>
-                    <div className="text-right truncate">
-                      <p className="font-bold text-gray-800 text-xs sm:text-sm truncate">{file.name}</p>
-                      <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5">
-                        {(file.size / (1024 * 1024)).toFixed(2)} ميغابايت
+              ) : (
+                <div className="flex w-full min-w-0 items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <FileText className="h-6 w-6 shrink-0 text-purple-400" />
+                    <div className="min-w-0 text-right">
+                      <p className="break-all text-sm font-bold text-white">
+                        {file.name}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {(file.size / (1024 * 1024)).toFixed(2)} ميجابايت
                       </p>
                     </div>
                   </div>
-
-                  {!loading && (
-                    <button
-                      onClick={resetAll}
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
-                      title="إلغاء الملف"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/80 p-3 rounded-2xl text-amber-800 text-[11px] sm:text-xs font-medium text-right">
-                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>ملاحظة: لضمان دقة استخراج الكلمات وتنسيق الجداول، تأكد بأن الملف يحتوي على نصوص أصلية.</span>
-                </div>
-
-                <div className="space-y-2 text-right">
-                  <label htmlFor="ocr-locale" className="block text-xs font-bold text-gray-700">
-                    لغة التعرف الضوئي للمستندات الممسوحة
-                  </label>
-                  <select
-                    id="ocr-locale"
-                    value={ocrLocale}
-                    onChange={(event) => setOcrLocale(event.target.value)}
-                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-gray-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                  <button
+                    type="button"
+                    onClick={reset}
+                    className="shrink-0 text-xs font-bold text-slate-400 transition hover:text-rose-400"
                   >
-                    {OCR_LANGUAGES.map((language) => (
-                      <option key={language.value} value={language.value}>
-                        {language.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] leading-5 text-gray-500">
-                    يستخدم Adobe OCR اللغة المحددة للصفحات المصورة. لا يدعم إصدار Adobe PDF Services الحالي التعرف الضوئي على العربية؛ النص العربي الأصلي القابل للتحديد يظل ضمن عملية التصدير.
-                  </p>
+                    تغيير الملف
+                  </button>
                 </div>
+              )}
 
-                {error && (
-                  <div className="flex items-center gap-2 text-red-600 bg-red-50 p-4 rounded-2xl text-xs sm:text-sm border border-red-100">
-                    <AlertCircle className="w-5 h-5 shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
+              {error && (
+                <p
+                  className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs leading-5 text-rose-300"
+                  role="alert"
+                >
+                  {error}
+                </p>
+              )}
 
+              {file && (
                 <button
+                  type="button"
                   onClick={handleConvert}
                   disabled={loading}
-                  className="w-full py-3.5 sm:py-4 bg-[#E5322D] hover:bg-[#c92520] disabled:bg-gray-300 text-white font-bold text-base sm:text-lg rounded-2xl shadow-md transition flex items-center justify-center gap-2"
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-purple-600 px-6 py-4 text-sm font-black text-white shadow-xl shadow-purple-600/20 transition-all hover:bg-purple-500 active:scale-[0.99] disabled:opacity-40"
                 >
-                  {loading ? (
-                    <>
-                      <RefreshCw className="w-5 h-5 animate-spin" />
-                      <span>جاري المعالجة والمطابقة الفائقة...</span>
-                    </>
-                  ) : (
-                    <span>تحويل والانتقال للمعاينة</span>
-                  )}
+                  <FileText className="h-4 w-4" />
+                  <span>تحويل إلى Word الآن</span>
                 </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {stage === "preview" && (
-          <div className="w-full max-w-4xl space-y-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-200 shadow-sm">
-              <div className="flex items-center gap-2 text-gray-800 font-bold text-xs sm:text-sm">
-                <Eye className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
-                <span>معاينة المستند (الأصل والمطابقة)</span>
-              </div>
-              <button
-                onClick={handleProceedToDownload}
-                className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-[#E5322D] hover:bg-[#c92520] text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-xs sm:text-sm shadow-md active:scale-95"
-              >
-                <FileType className="w-4 h-4" />
-                حفظ بصيغة WORD (DOCX)
-              </button>
-            </div>
-
-            {/* معاينة عبر عارض المتصفح الأصلي لضمان الحروف العربية بنسبة 100% */}
-            <div className="w-full max-w-[794px] mx-auto bg-white rounded-2xl shadow-xl border border-gray-300 overflow-hidden h-[600px] sm:h-[750px]">
-              {fileUrl && (
-                <iframe
-                  src={`${fileUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-                  className="w-full h-full border-none"
-                  title="PDF Preview"
-                />
               )}
-            </div>
-          </div>
-        )}
 
-        {stage === "download" && (
-          <div className="w-full max-w-xl bg-white border border-gray-200 rounded-3xl p-6 sm:p-12 text-center shadow-xs space-y-6">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle className="w-8 h-8 sm:w-10 sm:h-10" />
-            </div>
-
-            <div className="space-y-1">
-              <h2 className="text-xl sm:text-2xl font-black text-gray-900">
-                مستندك جاهز للتحميل الآن!
-              </h2>
-              <p className="text-xs sm:text-sm text-gray-500">
-                تم تحويل المستند بنجاح إلى ملف WORD (DOCX) مطابق للأصل.
+              <p className="text-center text-[11px] leading-5 text-slate-500">
+                تتم معالجة المستند بأمان بواسطة Adobe PDF Services. يدعم التحويل
+                النصوص الرقمية وتنسيقات المستندات؛ وقد تختلف النتيجة بحسب بنية
+                ملف PDF الأصلي.
               </p>
             </div>
+          )}
+        </section>
 
-            <div className="pt-2">
-              <button
-                onClick={triggerDownload}
-                className="w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 bg-[#E5322D] hover:bg-[#c92520] active:scale-95 text-white font-black text-lg sm:text-xl rounded-2xl shadow-xl hover:shadow-2xl transition flex items-center justify-center gap-3 mx-auto"
-              >
-                <Download className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
-                <span>تحميل ملف WORD</span>
-              </button>
-            </div>
-
-            <div className="pt-4 border-t border-gray-100 flex justify-center">
-              <button
-                onClick={resetAll}
-                className="inline-flex items-center gap-2 text-xs sm:text-sm text-gray-600 hover:text-gray-900 transition font-medium"
-              >
-                <RefreshCw className="w-4 h-4" />
-                تحويل ملف جديد
-              </button>
+        <section className="w-full space-y-8 border-t border-slate-900 pt-8 text-xs leading-relaxed text-slate-300 sm:text-sm">
+          <div className="space-y-4">
+            <h2 className="flex items-center gap-2 text-base font-bold text-white sm:text-lg">
+              <Sparkles className="h-4 w-4 text-purple-400" />
+              <span>كيفية تحويل PDF إلى Word أونلاين</span>
+            </h2>
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+              <article className="space-y-2 rounded-2xl border border-slate-900 bg-slate-950/60 p-4">
+                <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs font-black text-purple-400">
+                  1. ارفع الملف
+                </span>
+                <h3 className="text-xs font-bold text-white sm:text-sm">
+                  اختر مستند PDF
+                </h3>
+                <p className="text-xs text-slate-400">
+                  اسحب الملف إلى مربع الرفع أو اختره من جهازك لبدء التحويل.
+                </p>
+              </article>
+              <article className="space-y-2 rounded-2xl border border-slate-900 bg-slate-950/60 p-4">
+                <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs font-black text-purple-400">
+                  2. ابدأ التحويل
+                </span>
+                <h3 className="text-xs font-bold text-white sm:text-sm">
+                  حوّل المستند إلى DOCX
+                </h3>
+                <p className="text-xs text-slate-400">
+                  اضغط على زر التحويل لمعالجة النصوص والتنسيقات في المستند.
+                </p>
+              </article>
+              <article className="space-y-2 rounded-2xl border border-slate-900 bg-slate-950/60 p-4">
+                <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs font-black text-purple-400">
+                  3. نزّل Word
+                </span>
+                <h3 className="text-xs font-bold text-white sm:text-sm">
+                  احفظ الملف القابل للتحرير
+                </h3>
+                <p className="text-xs text-slate-400">
+                  بعد اكتمال التحويل، نزّل نسخة DOCX وافتحها في محرر Word
+                  المتوافق.
+                </p>
+              </article>
             </div>
           </div>
-        )}
-      </main>
 
-      <footer className="py-4 text-center text-xs text-gray-400">
-        © {new Date().getFullYear()} apdf.app — المحرك المتكامل لمستندات PDF و Office
-      </footer>
+          <div className="space-y-4 rounded-2xl border border-slate-900 bg-slate-950/50 p-5">
+            <h2 className="text-base font-bold text-white">
+              مميزات تحويل PDF إلى Word
+            </h2>
+            <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
+              <div className="flex items-start gap-2.5">
+                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-purple-400" />
+                <div>
+                  <h3 className="font-bold text-white">
+                    الحفاظ على التنسيق والخطوط العربية
+                  </h3>
+                  <p className="text-slate-400">
+                    يستخدم التصدير تخطيط PDF الأصلي للمحافظة على ترتيب النصوص
+                    والتنسيق قدر الإمكان.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <Zap className="mt-0.5 h-4 w-4 shrink-0 text-purple-400" />
+                <div>
+                  <h3 className="font-bold text-white">الجداول ومربعات النص</h3>
+                  <p className="text-slate-400">
+                    تتم معالجة عناصر المستند وتخطيطه عند إنشاء Word؛ وتعتمد
+                    دقة النتيجة على بنية PDF والخطوط المضمنة فيه.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                <div>
+                  <h3 className="font-bold text-white">الخصوصية والأمان</h3>
+                  <p className="text-slate-400">
+                    يستخدم التحويل خدمة Adobe PDF Services عبر اتصال آمن، ولا
+                    نخزن نسخة دائمة من ملفك في هذا التطبيق.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                <div>
+                  <h3 className="font-bold text-white">تحميل DOCX مباشر</h3>
+                  <p className="text-slate-400">
+                    نزّل ملف Word الناتج مباشرة بعد اكتمال المعالجة.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="flex items-center gap-2 text-base font-bold text-white">
+              <HelpCircle className="h-4 w-4 text-purple-400" />
+              أسئلة شائعة حول تحويل PDF إلى Word
+            </h2>
+            <div className="space-y-2">
+              <details className="rounded-xl border border-slate-900 bg-slate-950/60 p-4">
+                <summary className="cursor-pointer list-none font-bold text-purple-300">
+                  هل يدعم التحويل اللغة العربية؟
+                </summary>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  يعالج Adobe النص الرقمي الموجود في PDF ويصدره إلى DOCX. قد
+                  تختلف دقة اتجاه النص والخطوط بحسب المستند؛ أما صفحات الصور
+                  الممسوحة فتتطلب OCR باللغة المناسبة، ودعم OCR العربي غير
+                  متاح في إعدادات Adobe Export PDF المستخدمة هنا.
+                </p>
+              </details>
+              <details className="rounded-xl border border-slate-900 bg-slate-950/60 p-4">
+                <summary className="cursor-pointer list-none font-bold text-purple-300">
+                  كيف يحافظ التحويل على الجداول ومربعات النص؟
+                </summary>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  يعتمد التصدير على تخطيط PDF ومحتواه الرقمي لإنشاء DOCX. قد
+                  تحتاج بعض الجداول أو مربعات النص المعقدة إلى تعديل بسيط بعد
+                  التحويل لأن تنسيقات PDF وWord تختلف.
+                </p>
+              </details>
+              <details className="rounded-xl border border-slate-900 bg-slate-950/60 p-4">
+                <summary className="cursor-pointer list-none font-bold text-purple-300">
+                  هل الأداة مجانية؟
+                </summary>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  يمكنك استخدام واجهة التحويل دون رسوم من التطبيق. تتم معالجة
+                  الملفات عبر Adobe PDF Services وتخضع الخدمة لحصص الاستخدام
+                  وشروط Adobe.
+                </p>
+              </details>
+              <details className="rounded-xl border border-slate-900 bg-slate-950/60 p-4">
+                <summary className="cursor-pointer list-none font-bold text-purple-300">
+                  هل يمكن تحويل PDF ممسوح ضوئياً؟
+                </summary>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  قد تُحوّل الصفحات المصورة، لكن استخراج النص منها يعتمد على
+                  التعرف الضوئي على الحروف. يلزم أن تكون الصفحة قابلة للقراءة
+                  وأن تتوفر لغة OCR المناسبة.
+                </p>
+              </details>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

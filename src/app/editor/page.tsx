@@ -1,7 +1,24 @@
-" client"; const default export from function import null setFile]="useState<File" use useRef useState, { | }>(null);
+"use client";
+
+import React, { useState, useRef } from "react";
+import Link from "next/link";
+import {
+  ArrowRight,
+  Upload,
+  FileSignature,
+  Download,
+  Trash2,
+  Undo2,
+  Sparkles,
+  ShieldCheck,
+  Zap,
+} from "lucide-react";
+
+export default function EditorPage() {
+  const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
   const [isDrawing, setIsDrawing] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement null |>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [history, setHistory] = useState<ImageData[]>([]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,15 +106,17 @@
     <div className="min-h-screen bg-[#070b12] text-slate-100 flex flex-col justify-between" dir="rtl">
       <header className="max-w-4xl mx-auto w-full px-4 py-4 flex items-center justify-between border-b border-slate-900">
         <Link className="flex items-center gap-2 text-xs font-semibold text-purple-400" href="/">
-          <ArrowRight className="w-4 h-4"/> الرئيسية
+          <ArrowRight className="w-4 h-4" /> العودة للرئيسية
         </Link>
-        <span className="font-black text-lg text-white">apdf<span className="text-purple-400">.app</span></span>
+        <span className="font-black text-lg text-white">
+          apdf<span className="text-purple-400">.app</span>
+        </span>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-6 flex-1 w-full">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 text-xs font-bold">
-            <FileSignature className="w-3.5 h-3.5"/> أداة التوقيع
+            <FileSignature className="w-3.5 h-3.5" /> أداة التوقيع
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white">محرر وتوقيع مستندات PDF</h1>
           <p className="text-xs text-slate-400">وقع مستنداتك محلياً عبر المتصفح بأمان وخصوصية كاملة.</p>
@@ -106,14 +125,16 @@
         <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-4">
           {!file ? (
             <label className="border-2 border-dashed border-slate-800 hover:border-purple-500/50 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-slate-900/20">
-              <Upload className="w-6 h-6 text-purple-400"/>
+              <Upload className="w-6 h-6 text-purple-400" />
               <span className="text-xs font-bold text-white">اختر ملف PDF أو وقع في اللوحة أدناه</span>
               <input type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" />
             </label>
           ) : (
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800">
               <span className="text-xs text-purple-300 truncate">{fileName}</span>
-              <button onClick={() => setFile(null)} className="text-xs text-rose-400">تغيير</button>
+              <button onClick={() => setFile(null)} className="text-xs text-rose-400">
+                تغيير
+              </button>
             </div>
           )}
 
@@ -147,4 +168,27 @@
 
           <button
             onClick={downloadSignature}
-            className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs
+            className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-2"
+          >
+            <Download className="w-4 h-4" /> تحميل التوقيع (PNG)
+          </button>
+        </div>
+
+        <section className="space-y-4 pt-2 text-xs text-slate-300">
+          <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
+            <Sparkles className="w-4 h-4 text-purple-400" /> دليل استخدام الأداة
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-3 space-y-1">
+              <h3 className="font-bold text-white">1. التوقيع</h3>
+              <p className="text-slate-400 text-[11px]">ارسم توقيعك بدقة باللمس على الجوال أو الفأرة.</p>
+            </div>
+            <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-3 space-y-1">
+              <h3 className="font-bold text-white">2. التعديل</h3>
+              <p className="text-slate-400 text-[11px]">استخدم زر التراجع أو المسح لضبط الرسم.</p>
+            </div>
+            <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-3 space-y-1">
+              <h3 className="font-bold text-white">3. الحفظ</h3>
+              <p className="text-slate-400 text-[11px]">احفظ التوقيع بجودة فائقة بدون علامة مائية.</p>
+            </div>
+          </div>

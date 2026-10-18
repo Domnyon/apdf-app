@@ -297,10 +297,10 @@ export default function RotatePage() {
 
   return (
     <div
-      className="relative flex min-h-screen flex-col justify-between bg-[#070b12] font-sans text-slate-100 selection:bg-purple-500 selection:text-white"
+      className="relative flex min-h-screen w-full max-w-full flex-col justify-between overflow-x-hidden bg-[#070b12] font-sans text-slate-100 selection:bg-purple-500 selection:text-white"
       dir="rtl"
     >
-      <div className="pointer-events-none absolute right-1/4 top-0 h-[350px] w-[500px] rounded-full bg-purple-600/10 blur-[130px]" />
+      <div className="pointer-events-none absolute right-1/4 top-0 h-[350px] w-[500px] max-w-full overflow-hidden rounded-full bg-purple-600/10 blur-[130px]" />
 
       <header className="relative z-30 mx-auto flex w-full max-w-6xl items-center justify-between border-b border-slate-900 px-4 py-4">
         <Link

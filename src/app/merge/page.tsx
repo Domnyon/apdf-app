@@ -148,13 +148,13 @@ export default function MergePage() {
 
   return (
     <div
-      className="min-h-screen bg-[#070b12] text-slate-100 font-sans selection:bg-purple-500 selection:text-white relative flex flex-col justify-between"
+      className="relative flex min-h-screen w-full max-w-full flex-col justify-between overflow-x-hidden bg-[#070b12] font-sans text-slate-100 selection:bg-purple-500 selection:text-white"
       dir="rtl"
     >
-      <div className="absolute top-0 right-1/4 w-[500px] h-[350px] bg-purple-600/10 blur-[130px] rounded-full pointer-events-none" />
+      <div className="absolute top-0 right-1/4 h-[350px] w-[500px] max-w-full overflow-hidden rounded-full bg-purple-600/10 blur-[130px] pointer-events-none" />
 
       {/* الهيدر العلوي */}
-      <header className="relative z-30 max-w-6xl mx-auto w-full px-4 py-4 flex items-center justify-between border-b border-slate-900">
+      <header className="relative z-30 mx-auto flex w-full max-w-6xl items-center justify-between border-b border-slate-900 px-4 py-4">
         <Link
           href="/"
           className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition px-3 py-2 rounded-xl bg-slate-900/60 border border-slate-800"
@@ -171,7 +171,7 @@ export default function MergePage() {
         </div>
       </header>
 
-      <main className="relative z-20 max-w-4xl mx-auto px-3 py-6 flex-1 w-full space-y-12">
+      <main className="relative z-20 mx-auto flex w-full max-w-4xl flex-1 flex-col space-y-12 px-3 py-6">
         {processing && (
           <div className="fixed inset-0 z-50 bg-[#070b12]/80 backdrop-blur-md flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />

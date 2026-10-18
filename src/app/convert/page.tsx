@@ -236,7 +236,7 @@ export default function ConvertPage() {
       className="relative flex min-h-screen w-full max-w-full flex-col justify-between overflow-x-hidden bg-[#070b12] font-sans text-slate-100 selection:bg-purple-500 selection:text-white"
       dir="rtl"
     >
-      <div className="absolute top-0 right-1/4 h-[350px] w-[500px] max-w-full rounded-full bg-purple-600/10 blur-[130px] pointer-events-none" />
+      <div className="absolute top-0 right-1/4 h-[350px] w-[500px] max-w-full overflow-hidden rounded-full bg-purple-600/10 blur-[130px] pointer-events-none" />
 
       {/* Header */}
       <header className="relative z-30 mx-auto flex w-full max-w-full items-center justify-between border-b border-slate-900 px-4 py-4 lg:max-w-6xl">

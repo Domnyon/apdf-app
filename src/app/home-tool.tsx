@@ -97,7 +97,7 @@ export default function HomeTool() {
               <Lock className="w-4 h-4" />
             </div>
             <h3 className="font-bold text-xs sm:text-sm text-white">حماية وخصوصية تامة</h3>
-            <p className="text-[11px] text-slate-400 leading-relaxed">تعمل أدوات كثيرة محلياً في متصفحك، بينما تستخدم بعض الميزات خدمات سحابية موضحة في صفحاتها وسياسة الخصوصية.</p>
+            <p className="text-[11px] text-slate-400 leading-relaxed">معالجة محلية وسحابية آمنة ومشفرة لحماية خصوصيتك، مع توضيح طريقة المعالجة في صفحة كل أداة.</p>
           </div>
           <div className="bg-slate-950/50 border border-slate-900 rounded-2xl p-4 space-y-2">
             <div className="p-2 w-fit rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">

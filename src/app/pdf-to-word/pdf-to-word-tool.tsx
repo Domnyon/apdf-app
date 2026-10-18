@@ -318,9 +318,9 @@ export default function PdfToWordTool() {
               )}
 
               <p className="text-center text-[11px] leading-5 text-slate-500">
-                يُرسل الملف إلى Adobe PDF Services عبر اتصال HTTPS/TLS لتنفيذ
-                التحويل. لا يحتفظ التطبيق بنسخة دائمة بعد إتمام الطلب، لكن
-                المعالجة المؤقتة لدى Adobe تخضع لسياسات وشروط Adobe.
+                تتطلب هذه الميزة معالجة سحابية مشفرة عبر Adobe PDF Services
+                واتصال HTTPS/TLS. لا يحتفظ التطبيق بنسخة دائمة من الملف؛ أما
+                الحذف والاحتفاظ لدى Adobe فيخضعان لسياسات الخدمة وشروطها.
               </p>
             </div>
           )}
@@ -402,9 +402,9 @@ export default function PdfToWordTool() {
                 <div>
                   <h3 className="font-bold text-white">الخصوصية والأمان</h3>
                   <p className="text-slate-400">
-                    يُرسل الملف إلى Adobe عبر HTTPS/TLS لإتمام التحويل. لا نخزن
-                    نسخة دائمة في التطبيق؛ وتخضع معالجة Adobe المؤقتة لسياساتها
-                    وشروطها.
+                    تتم المعالجة السحابية المشفرة عبر Adobe باستخدام HTTPS/TLS.
+                    لا يحتفظ التطبيق بنسخة دائمة، بينما يخضع حذف الملفات
+                    المؤقتة ومدة الاحتفاظ بها لسياسات Adobe وشروطها.
                   </p>
                 </div>
               </div>

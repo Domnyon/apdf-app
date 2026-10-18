@@ -9,6 +9,8 @@ const DOCX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MAX_POLL_ATTEMPTS = 100;
 const POLL_INTERVAL_MS = 1000;
+const ADOBE_SERVICE_DOMAINS = ["adobe.io", "adobe.com"];
+const ADOBE_STORAGE_DOMAINS = ["amazonaws.com", "windows.net"];
 
 interface AdobeAsset {
   assetID?: string;
@@ -43,10 +45,31 @@ async function getAdobeError(response: Response): Promise<string> {
   }
 }
 
-function assertHttpsUrl(value: string, label: string): URL {
-  const url = new URL(value);
-  if (url.protocol !== "https:") {
+function assertTrustedAdobeUrl(
+  value: string,
+  label: string,
+  allowStorageHosts = false
+): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
     throw new Error(`Adobe returned an invalid ${label} URL.`);
+  }
+
+  const trustedDomains = allowStorageHosts
+    ? [...ADOBE_SERVICE_DOMAINS, ...ADOBE_STORAGE_DOMAINS]
+    : ADOBE_SERVICE_DOMAINS;
+  const isTrustedHost = trustedDomains.some(
+    (domain) => url.hostname.endsWith(`.${domain}`)
+  );
+  if (
+    url.protocol !== "https:" ||
+    !isTrustedHost ||
+    url.username.length > 0 ||
+    url.password.length > 0
+  ) {
+    throw new Error(`Adobe returned an untrusted ${label} URL.`);
   }
   return url;
 }
@@ -165,7 +188,7 @@ export async function POST(request: NextRequest) {
       throw new Error("Adobe returned incomplete upload details.");
     }
 
-    const uploadUrl = assertHttpsUrl(uploadUri, "upload");
+    const uploadUrl = assertTrustedAdobeUrl(uploadUri, "upload", true);
     const uploadResponse = await fetch(uploadUrl, {
       method: "PUT",
       headers: { "Content-Type": "application/pdf" },
@@ -193,13 +216,10 @@ export async function POST(request: NextRequest) {
     if (!locationHeader) {
       throw new Error("Adobe did not return an export job location.");
     }
-    const jobUrl = assertHttpsUrl(
+    const jobUrl = assertTrustedAdobeUrl(
       new URL(locationHeader, ADOBE_API_URL).toString(),
       "job"
     );
-    if (jobUrl.hostname !== new URL(ADOBE_API_URL).hostname) {
-      throw new Error("Adobe returned an untrusted export job location.");
-    }
 
     let completedJob: AdobeJobStatus | null = null;
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
@@ -246,7 +266,11 @@ export async function POST(request: NextRequest) {
       throw new Error("Adobe DOCX export did not finish before the timeout.");
     }
 
-    const downloadUrl = assertHttpsUrl(completedJob.asset.downloadUri, "download");
+    const downloadUrl = assertTrustedAdobeUrl(
+      completedJob.asset.downloadUri,
+      "download",
+      true
+    );
     const downloadResponse = await fetch(downloadUrl, { cache: "no-store" });
     if (!downloadResponse.ok) {
       throw new Error(`Adobe DOCX download failed: ${await getAdobeError(downloadResponse)}`);

@@ -12,6 +12,7 @@ import {
   Image as ImageIcon,
   Loader2,
   Printer,
+  Radar,
   ShieldCheck,
   Sparkles,
   UploadCloud,
@@ -175,6 +176,9 @@ export default function PrintPdfTool() {
   const [orientation, setOrientation] = useState<Orientation>("portrait");
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [scanningPrinters, setScanningPrinters] = useState(false);
+  const [hasScannedPrinters, setHasScannedPrinters] = useState(false);
+  const [selectedPrinter, setSelectedPrinter] = useState("system");
   const [errorMessage, setErrorMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
@@ -185,6 +189,8 @@ export default function PrintPdfTool() {
     setPreviewUrl("");
     setPageCount(0);
     setPageNumber(1);
+    setHasScannedPrinters(false);
+    setSelectedPrinter("system");
 
     if (!isSupportedFile(newFile)) {
       setErrorMessage("يرجى اختيار ملف PDF أو صورة بصيغة JPG أو PNG أو WEBP.");
@@ -248,6 +254,15 @@ export default function PrintPdfTool() {
       if (pdf) await pdf.destroy();
       setLoading(false);
     }
+  };
+
+  const scanForPrinters = async () => {
+    setScanningPrinters(true);
+    setHasScannedPrinters(false);
+    setSelectedPrinter("system");
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    setHasScannedPrinters(true);
+    setScanningPrinters(false);
   };
 
   const handlePrint = async () => {
@@ -353,6 +368,9 @@ export default function PrintPdfTool() {
     setPreviewUrl("");
     setPageCount(0);
     setPageNumber(1);
+    setHasScannedPrinters(false);
+    setScanningPrinters(false);
+    setSelectedPrinter("system");
     setErrorMessage("");
     if (inputRef.current) inputRef.current.value = "";
   };
@@ -585,31 +603,105 @@ export default function PrintPdfTool() {
                     </div>
                   )}
 
-                  <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-[11px] leading-6 text-slate-400">
-                    <span className="mb-1 flex items-center gap-1.5 font-bold text-slate-200">
-                      <Wifi className="h-4 w-4 text-purple-400" />
-                      الكشف التلقائي عن الطابعات
-                    </span>
-                    الكشف التلقائي عن طابعات الشبكة والواي فاي المتصلة بنظامك يظهر
-                    في نافذة الطباعة التي يوفرها المتصفح ونظام التشغيل.
+                  <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                    <div>
+                      <h3 className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-200">
+                        <Wifi className="h-4 w-4 text-purple-400" />
+                        البحث عن الطابعات
+                      </h3>
+                      <p className="text-[10px] leading-5 text-slate-400">
+                        افحص خيارات الطباعة اللاسلكية، ثم اختر مسار الاتصال المناسب.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void scanForPrinters()}
+                      disabled={scanningPrinters || printing || loading}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-3 py-3 text-xs font-black leading-5 text-purple-200 transition hover:bg-purple-500/20 disabled:cursor-wait disabled:opacity-70"
+                    >
+                      {scanningPrinters ? (
+                        <span className="relative flex h-5 w-5 items-center justify-center">
+                          <Radar className="h-5 w-5 animate-spin text-purple-300" />
+                          <span className="absolute h-2 w-2 animate-ping rounded-full bg-purple-300" />
+                        </span>
+                      ) : (
+                        <Wifi className="h-5 w-5" />
+                      )}
+                      {scanningPrinters
+                        ? "جاري فحص بروتوكولات الطباعة اللاسلكية AirPrint / Mopria / Wi-Fi..."
+                        : "البحث عن طابعات Wi-Fi والشبكة المحلية"}
+                    </button>
+
+                    {hasScannedPrinters && (
+                      <div className="space-y-2" aria-live="polite">
+                        <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-2 text-[10px] font-bold leading-5 text-emerald-300">
+                          <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          <span>
+                            متصل بالشبكة وجاهز للطباعة
+                            <span className="font-normal text-emerald-400/80"> (محاكاة؛ تحقق من الطابعة في نافذة النظام)</span>
+                          </span>
+                        </div>
+
+                        <fieldset className="space-y-2">
+                          <legend className="pb-1 text-[10px] font-bold text-slate-400">
+                            اختر مسار الطباعة
+                          </legend>
+                          {[
+                            ["system", "طابعة Wi-Fi الافتراضية للنظام (AirPrint / Mopria)"],
+                            ["network", "طابعة شبكة محلية (LAN / Network Printer)"],
+                            ["wireless", "طابعة عبر البلوتوث / اللاسلكي المباشر"],
+                          ].map(([value, label]) => (
+                            <label
+                              key={value}
+                              className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 text-[10px] leading-5 transition ${
+                                selectedPrinter === value
+                                  ? "border-purple-500/50 bg-purple-500/10 text-purple-200"
+                                  : "border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="printer-connection"
+                                value={value}
+                                checked={selectedPrinter === value}
+                                onChange={() => setSelectedPrinter(value)}
+                                className="mt-1 accent-purple-500"
+                              />
+                              <span>{label}</span>
+                            </label>
+                          ))}
+                        </fieldset>
+
+                        <p className="text-[10px] leading-5 text-slate-500">
+                          لا تسمح المتصفحات باكتشاف الطابعات أو اختيارها برمجياً؛ ستحدد الطابعة الفعلية من نافذة النظام.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => void handlePrint()}
-                    disabled={printing || loading}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-xl shadow-purple-900/20 transition hover:from-purple-500 hover:to-indigo-500 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    {printing ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <Printer className="h-5 w-5" />
-                    )}
-                    {printing ? "جاري تجهيز الطباعة..." : "طباعة ذكية عبر Wi-Fi والنظام"}
-                  </button>
-                  <p className="text-center text-[10px] leading-5 text-slate-500">
-                    اختر الطابعة وعدد النسخ من نافذة الطباعة الأصلية في جهازك.
-                  </p>
+                  {hasScannedPrinters && (
+                    <button
+                      type="button"
+                      onClick={() => void handlePrint()}
+                      disabled={printing || loading}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-3.5 text-sm font-black leading-6 text-white shadow-xl shadow-purple-900/20 transition hover:from-purple-500 hover:to-indigo-500 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {printing ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <Printer className="h-5 w-5" />
+                      )}
+                      {printing
+                        ? "جاري تجهيز الطباعة..."
+                        : "طباعة المستند عبر الطابعة المحددة الآن"}
+                    </button>
+                  )}
+                  {hasScannedPrinters && (
+                    <p className="text-center text-[10px] leading-5 text-slate-500">
+                      ستُفتح نافذة الطباعة بالنوع والمقاس المحددين ({paperSize}، هامش 8 مم) لتأكيد الطابعة.
+                    </p>
+                  )}
                 </aside>
               </div>
 

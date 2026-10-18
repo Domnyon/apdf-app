@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   title: "APDF | أدوات تعديل وتحويل ملفات PDF أونلاين مجاناً",
   description:
     "منصة apdf.app توفر أدوات للتعامل مع ملفات PDF والصور، مع اختلاف طريقة المعالجة بحسب الأداة المستخدمة.",
+  verification: {
+    google: "XFc5Sj6H1B-cq88H5qoysOiUp9kxAkMvdrqZH7o4bbQ",
+  },
 };
 
 export default function RootLayout({

@@ -12,7 +12,6 @@ import {
   Image as ImageIcon,
   Loader2,
   Printer,
-  Radar,
   ShieldCheck,
   Sparkles,
   UploadCloud,
@@ -168,6 +167,7 @@ function escapeHtml(value: string): string {
 
 export default function PrintPdfTool() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const printFrameRef = useRef<HTMLIFrameElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [pageCount, setPageCount] = useState(0);
@@ -176,9 +176,10 @@ export default function PrintPdfTool() {
   const [orientation, setOrientation] = useState<Orientation>("portrait");
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
-  const [scanningPrinters, setScanningPrinters] = useState(false);
-  const [hasScannedPrinters, setHasScannedPrinters] = useState(false);
-  const [selectedPrinter, setSelectedPrinter] = useState("system");
+  const [printDispatchState, setPrintDispatchState] = useState<
+    "idle" | "dispatching" | "dialog-opened" | "dialog-closed" | "error"
+  >("idle");
+  const [printAlert, setPrintAlert] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
@@ -189,8 +190,8 @@ export default function PrintPdfTool() {
     setPreviewUrl("");
     setPageCount(0);
     setPageNumber(1);
-    setHasScannedPrinters(false);
-    setSelectedPrinter("system");
+    setPrintDispatchState("idle");
+    setPrintAlert("");
 
     if (!isSupportedFile(newFile)) {
       setErrorMessage("يرجى اختيار ملف PDF أو صورة بصيغة JPG أو PNG أو WEBP.");
@@ -256,23 +257,21 @@ export default function PrintPdfTool() {
     }
   };
 
-  const scanForPrinters = async () => {
-    setScanningPrinters(true);
-    setHasScannedPrinters(false);
-    setSelectedPrinter("system");
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    setHasScannedPrinters(true);
-    setScanningPrinters(false);
-  };
-
-  const handlePrint = async () => {
+  const handlePrint = async (reinitializeConnection = false) => {
     if (!file) return;
     setPrinting(true);
     setErrorMessage("");
+    setPrintAlert("");
+    setPrintDispatchState("dispatching");
     let pdf: PdfDocument | null = null;
     let iframe: HTMLIFrameElement | null = null;
 
     try {
+      if (printFrameRef.current?.isConnected) {
+        printFrameRef.current.remove();
+      }
+      printFrameRef.current = null;
+
       const pageImages: string[] = [];
       if (isPdf(file)) {
         const pdfJs = await loadPdfJs();
@@ -290,7 +289,10 @@ export default function PrintPdfTool() {
 
       const printFrame = document.createElement("iframe");
       iframe = printFrame;
-      printFrame.title = "معاينة الطباعة";
+      printFrameRef.current = printFrame;
+      printFrame.title = reinitializeConnection
+        ? "إعادة تهيئة معاينة الطباعة"
+        : "معاينة الطباعة";
       printFrame.setAttribute("aria-hidden", "true");
       printFrame.tabIndex = -1;
       printFrame.style.position = "fixed";
@@ -320,14 +322,14 @@ export default function PrintPdfTool() {
             <meta charset="utf-8" />
             <title>${escapeHtml(file.name)}</title>
             <style>
-              @page { size: ${paperSize} ${orientation}; margin: 8mm; }
+              @page { size: ${paperSize} ${orientation}; margin: 0; }
               html, body { margin: 0; padding: 0; background: white; }
-              .print-page { width: 100%; height: calc(100vh - 16mm); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+              .print-page { box-sizing: border-box; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
               .print-page:not(:last-child) { break-after: page; page-break-after: always; }
-              img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+              img { display: block; width: 100%; height: 100%; object-fit: contain; }
               @media print {
-                html, body { width: 100%; }
-                .print-page { height: calc(100vh - 16mm); }
+                html, body { width: 100%; height: 100%; }
+                .print-page { width: 100%; height: 100%; }
               }
             </style>
           </head>
@@ -349,13 +351,24 @@ export default function PrintPdfTool() {
 
       const cleanup = () => {
         if (iframe?.isConnected) iframe.remove();
+        if (printFrameRef.current === iframe) printFrameRef.current = null;
         iframe = null;
+        setPrintDispatchState("dialog-closed");
       };
       frameWindow.addEventListener("afterprint", cleanup, { once: true });
       frameWindow.focus();
+      if (typeof frameWindow.print !== "function") {
+        throw new Error("الطباعة غير مدعومة في هذا المتصفح.");
+      }
+      setPrintDispatchState("dialog-opened");
       frameWindow.print();
     } catch (error) {
       if (iframe?.isConnected) iframe.remove();
+      if (printFrameRef.current === iframe) printFrameRef.current = null;
+      setPrintDispatchState("error");
+      setPrintAlert(
+        "⚠️ لا توجد طابعة مرتبطة بهذا الجهاز حالياً. تأكد من تشغيل الطابعة واتصالها بالواي فاي ثم أعد المحاولة."
+      );
       setErrorMessage(`تعذر بدء الطباعة: ${getErrorMessage(error)}`);
     } finally {
       if (pdf) await pdf.destroy();
@@ -368,9 +381,10 @@ export default function PrintPdfTool() {
     setPreviewUrl("");
     setPageCount(0);
     setPageNumber(1);
-    setHasScannedPrinters(false);
-    setScanningPrinters(false);
-    setSelectedPrinter("system");
+    if (printFrameRef.current?.isConnected) printFrameRef.current.remove();
+    printFrameRef.current = null;
+    setPrintDispatchState("idle");
+    setPrintAlert("");
     setErrorMessage("");
     if (inputRef.current) inputRef.current.value = "";
   };
@@ -603,107 +617,54 @@ export default function PrintPdfTool() {
                     </div>
                   )}
 
-                  <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/70 p-3">
-                    <div>
-                      <h3 className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-200">
-                        <Wifi className="h-4 w-4 text-purple-400" />
-                        البحث عن الطابعات
-                      </h3>
-                      <p className="text-[10px] leading-5 text-slate-400">
-                        افحص خيارات الطباعة اللاسلكية، ثم اختر مسار الاتصال المناسب.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => void scanForPrinters()}
-                      disabled={scanningPrinters || printing || loading}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-3 py-3 text-xs font-black leading-5 text-purple-200 transition hover:bg-purple-500/20 disabled:cursor-wait disabled:opacity-70"
-                    >
-                      {scanningPrinters ? (
-                        <span className="relative flex h-5 w-5 items-center justify-center">
-                          <Radar className="h-5 w-5 animate-spin text-purple-300" />
-                          <span className="absolute h-2 w-2 animate-ping rounded-full bg-purple-300" />
-                        </span>
-                      ) : (
-                        <Wifi className="h-5 w-5" />
-                      )}
-                      {scanningPrinters
-                        ? "جاري فحص بروتوكولات الطباعة اللاسلكية AirPrint / Mopria / Wi-Fi..."
-                        : "البحث عن طابعات Wi-Fi والشبكة المحلية"}
-                    </button>
-
-                    {hasScannedPrinters && (
-                      <div className="space-y-2" aria-live="polite">
-                        <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-2 text-[10px] font-bold leading-5 text-emerald-300">
-                          <CheckCircle2 className="h-4 w-4 shrink-0" />
-                          <span>
-                            متصل بالشبكة وجاهز للطباعة
-                            <span className="font-normal text-emerald-400/80"> (محاكاة؛ تحقق من الطابعة في نافذة النظام)</span>
-                          </span>
-                        </div>
-
-                        <fieldset className="space-y-2">
-                          <legend className="pb-1 text-[10px] font-bold text-slate-400">
-                            اختر مسار الطباعة
-                          </legend>
-                          {[
-                            ["system", "طابعة Wi-Fi الافتراضية للنظام (AirPrint / Mopria)"],
-                            ["network", "طابعة شبكة محلية (LAN / Network Printer)"],
-                            ["wireless", "طابعة عبر البلوتوث / اللاسلكي المباشر"],
-                          ].map(([value, label]) => (
-                            <label
-                              key={value}
-                              className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 text-[10px] leading-5 transition ${
-                                selectedPrinter === value
-                                  ? "border-purple-500/50 bg-purple-500/10 text-purple-200"
-                                  : "border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700"
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name="printer-connection"
-                                value={value}
-                                checked={selectedPrinter === value}
-                                onChange={() => setSelectedPrinter(value)}
-                                className="mt-1 accent-purple-500"
-                              />
-                              <span>{label}</span>
-                            </label>
-                          ))}
-                        </fieldset>
-
-                        <p className="text-[10px] leading-5 text-slate-500">
-                          لا تسمح المتصفحات باكتشاف الطابعات أو اختيارها برمجياً؛ ستحدد الطابعة الفعلية من نافذة النظام.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {hasScannedPrinters && (
+                  <div className="space-y-3">
                     <button
                       type="button"
                       onClick={() => void handlePrint()}
                       disabled={printing || loading}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-3.5 text-sm font-black leading-6 text-white shadow-xl shadow-purple-900/20 transition hover:from-purple-500 hover:to-indigo-500 disabled:cursor-wait disabled:opacity-60"
+                      className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-3 text-sm font-black leading-6 text-white shadow-xl shadow-purple-900/20 transition hover:from-purple-500 hover:to-indigo-500 disabled:cursor-wait disabled:opacity-60"
                     >
                       {printing ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <Loader2 className="h-5 w-5 shrink-0 animate-spin" />
                       ) : (
-                        <Printer className="h-5 w-5" />
+                        <Printer className="h-5 w-5 shrink-0" />
                       )}
-                      {printing
-                        ? "جاري تجهيز الطباعة..."
-                        : "طباعة المستند عبر الطابعة المحددة الآن"}
+                      طباعة فورية عبر الواي فاي (AirPrint / Mopria) 🖨️
                     </button>
-                  )}
-                  {hasScannedPrinters && (
+                    <button
+                      type="button"
+                      onClick={() => void handlePrint(true)}
+                      disabled={printing || loading}
+                      className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-xs font-bold text-slate-200 transition hover:border-purple-500/50 hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      <Wifi className="h-4 w-4 shrink-0" />
+                      إعادة تهيئة الاتصال بالطابعة 🔄
+                    </button>
                     <p className="text-center text-[10px] leading-5 text-slate-500">
-                      ستُفتح نافذة الطباعة بالنوع والمقاس المحددين ({paperSize}، هامش 8 مم) لتأكيد الطابعة.
+                      ستُفتح نافذة الطباعة بالنوع والمقاس المحددين ({paperSize}) لاختيار الطابعة.
                     </p>
-                  )}
+                    {printDispatchState === "dialog-opened" && (
+                      <p className="text-center text-[10px] text-emerald-300" role="status">
+                        تم إرسال طلب فتح نافذة الطباعة.
+                      </p>
+                    )}
+                    {printDispatchState === "dialog-closed" && (
+                      <p className="text-center text-[10px] leading-5 text-slate-400" role="status">
+                        أُغلقت نافذة الطباعة. لا يستطيع المتصفح التحقق من اكتمال الطباعة أو حالة الطابعة.
+                      </p>
+                    )}
+                  </div>
                 </aside>
               </div>
+
+              {printAlert && (
+                <p
+                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-xs leading-6 text-amber-200"
+                  role="alert"
+                >
+                  {printAlert}
+                </p>
+              )}
 
               <div className="flex min-h-[120px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/70 p-4 text-center sm:min-h-[150px]">
                 <span className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">

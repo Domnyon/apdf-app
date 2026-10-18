@@ -20,6 +20,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import { PDFDocument } from "pdf-lib";
+import JSZip from "jszip";
 
 type ConvertDirection = "img-to-pdf" | "pdf-to-img";
 
@@ -43,6 +44,7 @@ export default function ConvertPage() {
   const [outputDownloadUrl, setOutputDownloadUrl] = useState<string | null>(null);
   const [outputFileName, setOutputFileName] = useState<string>("apdf_converted");
   const [isPdfOutput, setIsPdfOutput] = useState<boolean>(true);
+  const [isArchiveOutput, setIsArchiveOutput] = useState<boolean>(false);
 
   // تحميل مكتبة pdf.js في المتصفح فقط عند الحاجة
   const getPdfJs = async (): Promise<any> => {
@@ -148,6 +150,7 @@ export default function ConvertPage() {
       setOutputDownloadUrl(downloadUrl);
       setOutputFileName(`images_to_pdf_${Date.now()}.pdf`);
       setIsPdfOutput(true);
+      setIsArchiveOutput(false);
       setDownloadReady(true);
     } catch {
       setStatusMsg("حدث خطأ أثناء تحويل الصور. يرجى تجربة صور أخرى.");
@@ -156,14 +159,16 @@ export default function ConvertPage() {
     }
   };
 
-  // تنفيذ تحويل صفحة الـ PDF الأولى إلى صورة PNG
+  // تنفيذ تحويل كل صفحات الـ PDF إلى صور مضغوطة داخل ZIP
   const convertPdfToImages = async () => {
     if (!selectedPdf) return;
     setProcessing(true);
-    setStatusMsg("جاري معالجة صفحات المستند واستخراج الصور...");
+    setStatusMsg("جاري معالجة صفحات المستند وإنشاء ملف ZIP...");
 
     try {
       const pdfjsLib = await getPdfJs();
+      if (!pdfjsLib) throw new Error("PDF engine error");
+
       const arrayBuffer = await selectedPdf.arrayBuffer();
       const loadingTask = pdfjsLib.getDocument({
         data: arrayBuffer,
@@ -171,20 +176,43 @@ export default function ConvertPage() {
         cMapPacked: true,
       });
       const pdf = await loadingTask.promise;
-      const page = await pdf.getPage(1);
+      const zip = new JSZip();
 
-      const viewport = page.getViewport({ scale: 2.0 });
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d")!;
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 2.0 });
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
 
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      const imgDataUrl = canvas.toDataURL("image/png");
+        if (!ctx) {
+          throw new Error("Canvas context unavailable");
+        }
 
-      setOutputDownloadUrl(imgDataUrl);
-      setOutputFileName(`pdf_page_1_${Date.now()}.png`);
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((canvasBlob) => {
+            if (canvasBlob) {
+              resolve(canvasBlob);
+            } else {
+              reject(new Error("Image export failed"));
+            }
+          }, "image/png");
+        });
+
+        zip.file(`page_${String(pageNumber).padStart(3, "0")}.png`, blob);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+      const downloadUrl = URL.createObjectURL(zipBlob);
+
+      setOutputDownloadUrl(downloadUrl);
+      setOutputFileName(`pdf_pages_${Date.now()}.zip`);
       setIsPdfOutput(false);
+      setIsArchiveOutput(true);
       setDownloadReady(true);
     } catch {
       setStatusMsg("تعذر استخراج الصور من الملف.");
@@ -196,6 +224,9 @@ export default function ConvertPage() {
   const handleReset = () => {
     setDownloadReady(false);
     setOutputDownloadUrl(null);
+    setOutputFileName("apdf_converted");
+    setIsPdfOutput(true);
+    setIsArchiveOutput(false);
     setSelectedImages([]);
     setSelectedPdf(null);
   };
@@ -257,9 +288,11 @@ export default function ConvertPage() {
               <div className="space-y-1.5">
                 <h2 className="text-xl sm:text-2xl font-black text-white">تم التحويل بنجاح!</h2>
                 <p className="text-xs sm:text-sm text-slate-400">
-                  {isPdfOutput
-                    ? "تم تجميع الصور داخل ملف PDF عالي الجودة وجاهز للتحميل."
-                    : "تم استخراج صفحات المستند كصور عالية الوضوح."}
+                  {isArchiveOutput
+                    ? "تم استخراج جميع صفحات المستند وحفظها داخل ملف ZIP مضغوط وجاهز للتحميل."
+                    : isPdfOutput
+                      ? "تم تجميع الصور داخل ملف PDF عالي الجودة وجاهز للتحميل."
+                      : "تم استخراج صفحات المستند كصور عالية الوضوح."}
                 </p>
               </div>
 
@@ -270,7 +303,11 @@ export default function ConvertPage() {
                   className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/20 active:scale-95 transition-all"
                 >
                   <Download className="w-5 h-5" />
-                  <span>تحميل الملف ({isPdfOutput ? "PDF" : "PNG"})</span>
+                  <span>
+                    {isArchiveOutput
+                      ? "تحميل الملف (ZIP)"
+                      : `تحميل الملف (${isPdfOutput ? "PDF" : "PNG"})`}
+                  </span>
                 </a>
 
                 <button
@@ -455,7 +492,7 @@ export default function ConvertPage() {
                       className="w-full py-4 px-6 rounded-2xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-purple-600/20 active:scale-[0.99] transition-all"
                     >
                       <FileText className="w-4 h-4" />
-                      <span>استخراج أول صفحة كصورة PNG</span>
+                      <span>استخراج جميع الصفحات في ملف ZIP</span>
                     </button>
                   </div>
                 )}

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import FloatingImageConverter from "@/components/FloatingImageConverter";
+import TopPromoSlider from "@/components/TopPromoSlider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,9 +32,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased w-full max-w-full overflow-x-hidden`}
       >
+        {/* شريط الإعلانات المتحرك في أعلى الموقع */}
+        <TopPromoSlider />
         {children}
-        {/* الأيقونة العائمة أسفل الصفحة */}
-        <FloatingImageConverter />
       </body>
     </html>
   );

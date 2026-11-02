@@ -22,6 +22,10 @@ type InvoiceItem = {
 const PROFILE_STORAGE_KEY = 'apdf-invoice-company-profile';
 const PROFILE_ENABLED_KEY = 'apdf-invoice-save-company-profile';
 const VAT_RATE = 0.15;
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+const A4_WIDTH_PX = Math.round((A4_WIDTH_MM / 25.4) * 96);
+const A4_HEIGHT_PX = Math.round((A4_HEIGHT_MM / 25.4) * 96);
 
 const emptyCompany: CompanyProfile = {
   name: '',
@@ -79,6 +83,9 @@ export default function InvoiceGeneratorPage() {
   const [storageMessage, setStorageMessage] = useState('');
   const [bankName, setBankName] = useState('');
   const [iban, setIban] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const invoiceRef = useRef<HTMLElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const nextItemId = useRef(2);
 
@@ -213,34 +220,129 @@ export default function InvoiceGeneratorPage() {
     event.target.value = '';
   };
 
+  const downloadInvoicePdf = async () => {
+    const invoiceElement = invoiceRef.current;
+    if (!invoiceElement || isExporting) return;
+
+    setIsExporting(true);
+    setExportError('');
+
+    try {
+      await document.fonts.ready;
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+
+      const canvas = await html2canvas(invoiceElement, {
+        backgroundColor: '#ffffff',
+        height: A4_HEIGHT_PX,
+        width: A4_WIDTH_PX,
+        windowHeight: A4_HEIGHT_PX,
+        windowWidth: A4_WIDTH_PX,
+        scale: 2,
+        useCORS: true,
+        onclone: (clonedDocument) => {
+          const clonedInvoice = clonedDocument.getElementById('invoice-preview');
+          if (!clonedInvoice) {
+            throw new Error('تعذر العثور على نسخة الفاتورة للتصدير.');
+          }
+
+          const clonedWindow = clonedDocument.defaultView;
+          const colorCanvas = clonedDocument.createElement('canvas');
+          const colorContext = colorCanvas.getContext('2d', { willReadFrequently: true });
+          if (!clonedWindow || !colorContext) {
+            throw new Error('تعذر تهيئة ألوان الفاتورة للتصدير.');
+          }
+
+          Object.assign(clonedInvoice.style, {
+            boxSizing: 'border-box',
+            borderRadius: '0',
+            boxShadow: 'none',
+            height: `${A4_HEIGHT_MM}mm`,
+            maxHeight: `${A4_HEIGHT_MM}mm`,
+            minHeight: `${A4_HEIGHT_MM}mm`,
+            overflow: 'hidden',
+            padding: '16mm',
+            width: `${A4_WIDTH_MM}mm`,
+          });
+
+          const colorProperties = [
+            'color',
+            'background-color',
+            'border-top-color',
+            'border-right-color',
+            'border-bottom-color',
+            'border-left-color',
+            'outline-color',
+            'text-decoration-color',
+            'text-emphasis-color',
+            'column-rule-color',
+          ];
+
+          [clonedInvoice, ...Array.from(clonedInvoice.querySelectorAll<HTMLElement>('*'))].forEach(
+            (element: HTMLElement) => {
+              const computedStyle = clonedWindow.getComputedStyle(element);
+              colorProperties.forEach((property) => {
+                const color = computedStyle.getPropertyValue(property);
+                if (!/(?:lab|oklch|oklab)\(/i.test(color)) return;
+
+                colorContext.clearRect(0, 0, 1, 1);
+                colorContext.fillStyle = color;
+                colorContext.fillRect(0, 0, 1, 1);
+                const [red, green, blue, alpha] = colorContext.getImageData(0, 0, 1, 1).data;
+                element.style.setProperty(
+                  property,
+                  alpha === 255
+                    ? `rgb(${red}, ${green}, ${blue})`
+                    : `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`
+                );
+              });
+            }
+          );
+        },
+      });
+
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: [A4_WIDTH_MM, A4_HEIGHT_MM],
+        compress: true,
+      });
+      pdf.addImage(
+        canvas.toDataURL('image/jpeg', 0.98),
+        'JPEG',
+        0,
+        0,
+        A4_WIDTH_MM,
+        A4_HEIGHT_MM,
+        undefined,
+        'FAST'
+      );
+
+      const safeInvoiceNumber = (invoiceNumber.trim() || 'draft').replace(
+        /[<>:"/\\|?*\u0000-\u001f]/g,
+        '-'
+      );
+      const downloadUrl = URL.createObjectURL(pdf.output('blob'));
+      const downloadLink = document.createElement('a');
+      downloadLink.href = downloadUrl;
+      downloadLink.download = `invoice-${safeInvoiceNumber}.pdf`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (error) {
+      console.error('تعذر إنشاء ملف PDF للفاتورة:', error);
+      setExportError('تعذر إنشاء ملف PDF. يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   /* eslint-disable @next/next/no-img-element -- Uploaded logos are local data URLs and should bypass image optimization. */
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100 selection:bg-blue-600 selection:text-white sm:px-6 lg:px-8">
-      <style>{`
-        @media print {
-          @page { size: A4; margin: 0; }
-          html, body { width: 210mm !important; min-width: 210mm !important; background: #fff !important; overflow: visible !important; }
-          body * { visibility: hidden !important; }
-          .invoice-sheet, .invoice-sheet * { visibility: visible !important; }
-          .invoice-sheet {
-            position: fixed !important;
-            inset: 0 auto auto 0 !important;
-            width: 210mm !important;
-            min-height: 297mm !important;
-            margin: 0 !important;
-            padding: 16mm !important;
-            border: 0 !important;
-            border-radius: 0 !important;
-            box-shadow: none !important;
-            color: #0f172a !important;
-            background: #fff !important;
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
-          }
-          .no-print { display: none !important; }
-        }
-      `}</style>
-
       <div className="mx-auto max-w-7xl space-y-8">
         <nav className="no-print flex items-center gap-2 text-sm text-slate-400">
           <Link href="/" className="transition-colors hover:text-blue-400">
@@ -258,7 +360,7 @@ export default function InvoiceGeneratorPage() {
             منشئ الفواتير
           </h1>
           <p className="mx-auto max-w-2xl text-slate-400">
-            أنشئ فاتورة احترافية وخصص بياناتها، ثم اطبعها أو احفظها بصيغة PDF.
+            أنشئ فاتورة احترافية وخصص بياناتها، ثم حمّلها مباشرة بصيغة PDF.
             تتم معالجة بياناتك داخل متصفحك.
           </p>
         </header>
@@ -596,14 +698,24 @@ export default function InvoiceGeneratorPage() {
               </div>
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500"
+                onClick={downloadInvoicePdf}
+                disabled={isExporting}
+                className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500 disabled:cursor-wait disabled:opacity-60"
               >
-                طباعة / حفظ PDF
+                {isExporting ? 'جارٍ تجهيز PDF...' : 'تنزيل الفاتورة PDF'}
               </button>
             </div>
+            {exportError && (
+              <p role="alert" className="no-print text-sm text-rose-300">
+                {exportError}
+              </p>
+            )}
 
-            <article className="invoice-sheet mx-auto min-h-[297mm] w-full max-w-[210mm] rounded-xl bg-white p-6 text-slate-900 shadow-2xl sm:p-10 lg:p-12">
+            <article
+              ref={invoiceRef}
+              id="invoice-preview"
+              className="invoice-sheet mx-auto min-h-[297mm] w-full max-w-[210mm] rounded-xl bg-white p-6 text-slate-900 shadow-2xl sm:p-10 lg:p-12"
+            >
               <div className="flex items-start justify-between gap-5 border-b-2 border-blue-600 pb-6">
                 <div className="min-w-0">
                   <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
@@ -740,7 +852,7 @@ export default function InvoiceGeneratorPage() {
               <li>أدخل بيانات المؤسسة والعميل.</li>
               <li>أضف البنود والكمية والسعر والخصم.</li>
               <li>فعّل الضريبة عند الحاجة، ثم راجع المعاينة.</li>
-              <li>اختر طباعة / حفظ PDF.</li>
+              <li>اضغط تنزيل الفاتورة PDF لحفظ نسخة A4.</li>
             </ol>
           </article>
           <article className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
@@ -756,7 +868,7 @@ export default function InvoiceGeneratorPage() {
             </details>
             <details className="mt-3">
               <summary className="cursor-pointer text-sm font-semibold text-slate-200">كيف أحفظ الفاتورة بصيغة PDF؟</summary>
-              <p className="mt-2 text-sm leading-6 text-slate-400">اضغط زر الطباعة ثم اختر “حفظ بصيغة PDF” من نافذة الطباعة.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">اضغط زر تنزيل الفاتورة PDF، وسيبدأ تنزيل الملف مباشرة.</p>
             </details>
           </article>
         </section>

@@ -6,38 +6,59 @@ import { usePathname } from 'next/navigation';
 export default function FloatingImageConverter() {
   const pathname = usePathname();
 
-  // إخفاء الأيقونة إذا كان المستخدم موجوداً بالفعل داخل صفحة محول الصور
+  // إخفاء الأيقونة فقط إذا كان المستخدم داخل صفحة محول الصور
   if (pathname === '/image-converter') {
     return null;
   }
 
   return (
-    <aside aria-label="أدوات سريعة" className="fixed bottom-6 left-6 z-50 flex items-center group">
+    <div
+      style={{
+        position: 'fixed',
+        bottom: '24px',
+        left: '24px',
+        zIndex: 9999,
+      }}
+    >
       <Link
         href="/image-converter"
-        className="flex items-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-5 py-3.5 rounded-full shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 transform hover:-translate-y-1 active:scale-95 border border-white/20"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
+          color: '#ffffff',
+          padding: '12px 20px',
+          borderRadius: '9999px',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3)',
+          textDecoration: 'none',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+        }}
       >
-        {/* أيقونة التحويل الدائرية */}
-        <span className="flex items-center justify-center w-8 h-8 rounded-full bg-white/20 text-lg">
+        <span
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '32px',
+            height: '32px',
+            borderRadius: '9999px',
+            backgroundColor: 'rgba(255, 255, 255, 0.2)',
+            fontSize: '18px',
+          }}
+        >
           🔄
         </span>
 
-        {/* النص التعريفي للأداة */}
-        <div className="flex flex-col text-right">
-          <span className="text-xs text-blue-100 font-medium leading-none mb-1">
+        <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'right' }}>
+          <span style={{ fontSize: '11px', color: '#bfdbfe', lineHeight: 1.2 }}>
             أداة جديدة
           </span>
-          <span className="text-sm font-bold leading-none">
+          <span style={{ fontSize: '14px', fontWeight: 'bold', lineHeight: 1.2 }}>
             محول صور احترافي
           </span>
         </div>
-
-        {/* وميض خفيف لجذب الانتباه */}
-        <span className="relative flex h-3 w-3 mr-1">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-        </span>
       </Link>
-    </aside>
+    </div>
   );
 }

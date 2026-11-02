@@ -27,12 +27,12 @@ const slides: Slide[] = [
   },
   {
     id: 2,
-    badge: 'قريباً',
+    badge: 'متاح الآن',
     icon: '🧾',
     title: 'صانع الفواتير الاحترافي',
     desc: 'أنشئ فواتير إلكترونية ضريبية جاهزة للطباعة والتنزيل بصيغة PDF بضغطة زر.',
     linkText: 'اكتشف المزيد',
-    href: '#',
+    href: '/invoice-generator',
     bgGradient: 'from-emerald-600 via-teal-600 to-emerald-700',
   },
 ];
@@ -51,7 +51,7 @@ export default function TopPromoSlider() {
   const current = slides[currentIndex];
 
   return (
-    <header className="relative w-full overflow-hidden text-white shadow-md z-40">
+    <header className="relative z-50 isolate w-full overflow-hidden text-white shadow-md">
       <div
         className={`w-full bg-gradient-to-r ${current.bgGradient} transition-all duration-700 py-2.5 px-4`}
       >
@@ -71,7 +71,7 @@ export default function TopPromoSlider() {
 
             <Link
               href={current.href}
-              className="inline-flex items-center gap-1 bg-white text-gray-900 font-bold px-3 py-1 rounded-full text-xs hover:bg-gray-100 shadow-sm transition-transform active:scale-95 whitespace-nowrap mr-2"
+              className="relative z-10 pointer-events-auto inline-flex items-center gap-1 bg-white text-gray-900 font-bold px-3 py-1 rounded-full text-xs hover:bg-gray-100 shadow-sm transition-transform active:scale-95 whitespace-nowrap mr-2"
             >
               <span>{current.linkText}</span>
               <span className="text-xs">←</span>
@@ -82,9 +82,10 @@ export default function TopPromoSlider() {
             {slides.map((slide, idx) => (
               <button
                 key={slide.id}
+                type="button"
                 onClick={() => setCurrentIndex(idx)}
                 aria-label={`شريحة ${idx + 1}`}
-                className={`h-1.5 rounded-full transition-all duration-300 ${
+                className={`relative z-10 pointer-events-auto h-1.5 rounded-full transition-all duration-300 ${
                   currentIndex === idx
                     ? 'w-6 bg-white'
                     : 'w-2 bg-white/40 hover:bg-white/70'

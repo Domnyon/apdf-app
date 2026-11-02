@@ -10,6 +10,7 @@ export default function ImageConverterPage() {
   const [quality, setQuality] = useState<number>(90);
   const [isProcessing, setIsProcessing] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [downloadFilename, setDownloadFilename] = useState<string | null>(null);
   const [convertedSize, setConvertedSize] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -18,6 +19,7 @@ export default function ImageConverterPage() {
     if (file) {
       setSelectedFile(file);
       setDownloadUrl(null);
+      setDownloadFilename(null);
       setConvertedSize(null);
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -63,6 +65,9 @@ export default function ImageConverterPage() {
             if (blob) {
               const url = URL.createObjectURL(blob);
               setDownloadUrl(url);
+              setDownloadFilename(
+                `converted-${Date.now()}.${outputFormat === 'jpeg' ? 'jpg' : outputFormat}`
+              );
               setConvertedSize((blob.size / 1024).toFixed(1) + ' KB');
             } else {
               alert('فشلت معالجة الصورة');
@@ -157,6 +162,7 @@ export default function ImageConverterPage() {
                       setSelectedFile(null);
                       setImagePreview(null);
                       setDownloadUrl(null);
+                      setDownloadFilename(null);
                     }}
                     className="text-xs text-rose-400 hover:text-rose-300 transition-colors pt-2 block"
                   >
@@ -178,6 +184,7 @@ export default function ImageConverterPage() {
                         onClick={() => {
                           setOutputFormat(fmt);
                           setDownloadUrl(null);
+                          setDownloadFilename(null);
                         }}
                         className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
                           outputFormat === fmt
@@ -207,6 +214,7 @@ export default function ImageConverterPage() {
                       onChange={(e) => {
                         setQuality(Number(e.target.value));
                         setDownloadUrl(null);
+                        setDownloadFilename(null);
                       }}
                       className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 mt-2"
                     />
@@ -239,7 +247,7 @@ export default function ImageConverterPage() {
                     </div>
                     <a
                       href={downloadUrl}
-                      download={`converted-${Date.now()}.${outputFormat === 'jpeg' ? 'jpg' : outputFormat}`}
+                      download={downloadFilename ?? `converted-image.${outputFormat === 'jpeg' ? 'jpg' : outputFormat}`}
                       className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-center text-sm transition-all shadow-lg shadow-emerald-600/20"
                     >
                       تحميل الصورة المُحوّلة

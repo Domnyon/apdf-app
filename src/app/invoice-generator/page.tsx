@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 type CompanyProfile = {
   name: string;
@@ -22,10 +24,6 @@ type InvoiceItem = {
 const PROFILE_STORAGE_KEY = 'apdf-invoice-company-profile';
 const PROFILE_ENABLED_KEY = 'apdf-invoice-save-company-profile';
 const VAT_RATE = 0.15;
-const A4_WIDTH_MM = 210;
-const A4_HEIGHT_MM = 297;
-const A4_WIDTH_PX = Math.round((A4_WIDTH_MM / 25.4) * 96);
-const A4_HEIGHT_PX = Math.round((A4_HEIGHT_MM / 25.4) * 96);
 
 const emptyCompany: CompanyProfile = {
   name: '',
@@ -85,7 +83,6 @@ export default function InvoiceGeneratorPage() {
   const [iban, setIban] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState('');
-  const invoiceRef = useRef<HTMLElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const nextItemId = useRef(2);
 
@@ -220,52 +217,28 @@ export default function InvoiceGeneratorPage() {
     event.target.value = '';
   };
 
-  const downloadInvoicePdf = async () => {
-    const invoiceElement = invoiceRef.current;
+  const handleDownloadPDF = async () => {
+    const invoiceElement = document.getElementById('invoice-print-area');
     if (!invoiceElement || isExporting) return;
 
     setIsExporting(true);
     setExportError('');
 
     try {
-      await document.fonts.ready;
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import('html2canvas'),
-        import('jspdf'),
-      ]);
-
       const canvas = await html2canvas(invoiceElement, {
-        backgroundColor: '#ffffff',
-        height: A4_HEIGHT_PX,
-        width: A4_WIDTH_PX,
-        windowHeight: A4_HEIGHT_PX,
-        windowWidth: A4_WIDTH_PX,
         scale: 2,
         useCORS: true,
+        logging: false,
+        windowWidth: invoiceElement.scrollWidth,
+        windowHeight: invoiceElement.scrollHeight,
         onclone: (clonedDocument) => {
-          const clonedInvoice = clonedDocument.getElementById('invoice-preview');
-          if (!clonedInvoice) {
-            throw new Error('تعذر العثور على نسخة الفاتورة للتصدير.');
-          }
-
+          const clonedInvoice = clonedDocument.getElementById('invoice-print-area');
           const clonedWindow = clonedDocument.defaultView;
           const colorCanvas = clonedDocument.createElement('canvas');
           const colorContext = colorCanvas.getContext('2d', { willReadFrequently: true });
-          if (!clonedWindow || !colorContext) {
-            throw new Error('تعذر تهيئة ألوان الفاتورة للتصدير.');
+          if (!clonedInvoice || !clonedWindow || !colorContext) {
+            throw new Error('تعذر تجهيز الفاتورة لالتقاط PDF.');
           }
-
-          Object.assign(clonedInvoice.style, {
-            boxSizing: 'border-box',
-            borderRadius: '0',
-            boxShadow: 'none',
-            height: `${A4_HEIGHT_MM}mm`,
-            maxHeight: `${A4_HEIGHT_MM}mm`,
-            minHeight: `${A4_HEIGHT_MM}mm`,
-            overflow: 'hidden',
-            padding: '16mm',
-            width: `${A4_WIDTH_MM}mm`,
-          });
 
           const colorProperties = [
             'color',
@@ -303,38 +276,21 @@ export default function InvoiceGeneratorPage() {
         },
       });
 
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: [A4_WIDTH_MM, A4_HEIGHT_MM],
-        compress: true,
-      });
-      pdf.addImage(
-        canvas.toDataURL('image/jpeg', 0.98),
-        'JPEG',
-        0,
-        0,
-        A4_WIDTH_MM,
-        A4_HEIGHT_MM,
-        undefined,
-        'FAST'
-      );
-
-      const safeInvoiceNumber = (invoiceNumber.trim() || 'draft').replace(
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      const safeInvoiceNumber = (invoiceNumber || 'INV-001').replace(
         /[<>:"/\\|?*\u0000-\u001f]/g,
         '-'
       );
-      const downloadUrl = URL.createObjectURL(pdf.output('blob'));
-      const downloadLink = document.createElement('a');
-      downloadLink.href = downloadUrl;
-      downloadLink.download = `invoice-${safeInvoiceNumber}.pdf`;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      downloadLink.remove();
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(pdfHeight, 295));
+      pdf.save(`invoice-${safeInvoiceNumber}.pdf`);
     } catch (error) {
-      console.error('تعذر إنشاء ملف PDF للفاتورة:', error);
-      setExportError('تعذر إنشاء ملف PDF. يرجى المحاولة مرة أخرى.');
+      console.error('Error generating PDF:', error);
+      setExportError('حدث خطأ أثناء تحميل الفاتورة، يرجى المحاولة مجدداً');
+      alert('حدث خطأ أثناء تحميل الفاتورة، يرجى المحاولة مجدداً');
     } finally {
       setIsExporting(false);
     }
@@ -698,7 +654,7 @@ export default function InvoiceGeneratorPage() {
               </div>
               <button
                 type="button"
-                onClick={downloadInvoicePdf}
+                onClick={handleDownloadPDF}
                 disabled={isExporting}
                 className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500 disabled:cursor-wait disabled:opacity-60"
               >
@@ -712,8 +668,7 @@ export default function InvoiceGeneratorPage() {
             )}
 
             <article
-              ref={invoiceRef}
-              id="invoice-preview"
+              id="invoice-print-area"
               className="invoice-sheet mx-auto min-h-[297mm] w-full max-w-[210mm] rounded-xl bg-white p-6 text-slate-900 shadow-2xl sm:p-10 lg:p-12"
             >
               <div className="flex items-start justify-between gap-5 border-b-2 border-blue-600 pb-6">

@@ -221,30 +221,56 @@ export default function InvoiceGeneratorPage() {
     }
   };
 
-  const handleCompanyImageChange = (
+  const handleCompanyImageChange = async (
     field: 'logo' | 'stamp' | 'signature',
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
+    const input = event.currentTarget;
     const file = event.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
       setStorageMessage('يرجى اختيار ملف صورة صالح.');
+      input.value = '';
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        updateCompany(field, reader.result);
-        setStorageMessage('');
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error('تعذر تحميل الصورة.'));
+        image.src = imageUrl;
+      });
+
+      const scale = Math.min(1, 600 / image.naturalWidth, 1200 / image.naturalHeight);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('تعذر تشغيل معالج الصور.');
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+      let compressedImage = canvas.toDataURL('image/webp', 0.82);
+      if (!compressedImage.startsWith('data:image/webp')) {
+        context.fillStyle = '#FFFFFF';
+        context.globalCompositeOperation = 'destination-over';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        compressedImage = canvas.toDataURL('image/jpeg', 0.82);
       }
-    };
-    reader.onerror = () => {
-      setStorageMessage('تعذر قراءة الصورة. يرجى المحاولة مرة أخرى.');
-    };
-    reader.readAsDataURL(file);
-    event.target.value = '';
+
+      updateCompany(field, compressedImage);
+      setStorageMessage('');
+    } catch (error) {
+      console.error('تعذر معالجة صورة المؤسسة:', error);
+      setStorageMessage('تعذر معالجة الصورة. يرجى اختيار صورة أخرى والمحاولة مجددًا.');
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+      input.value = '';
+    }
   };
 
   const handleDownloadPDF = async () => {
@@ -256,7 +282,7 @@ export default function InvoiceGeneratorPage() {
 
     try {
       const canvas = await html2canvas(invoiceElement, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         logging: false,
         windowWidth: Math.max(invoiceElement.scrollWidth, Math.ceil((210 / 25.4) * 96)),
@@ -317,8 +343,13 @@ export default function InvoiceGeneratorPage() {
         },
       });
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgData = canvas.toDataURL('image/jpeg', 0.82);
+      const pdf = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+      });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       const safeInvoiceNumber = (invoiceNumber || 'INV-001').replace(
@@ -326,7 +357,7 @@ export default function InvoiceGeneratorPage() {
         '-'
       );
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(pdfHeight, 295));
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(pdfHeight, 295), undefined, 'FAST');
       pdf.save(`invoice-${safeInvoiceNumber}.pdf`);
     } catch (error) {
       console.error('Error generating PDF:', error);

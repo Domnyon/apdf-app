@@ -12,6 +12,8 @@ type CompanyProfile = {
   phone: string;
   address: string;
   logo: string;
+  stamp: string;
+  signature: string;
 };
 
 type InvoiceItem = {
@@ -32,14 +34,36 @@ const emptyCompany: CompanyProfile = {
   phone: '',
   address: '',
   logo: '',
+  stamp: '',
+  signature: '',
 };
 
-function isCompanyProfile(value: unknown): value is CompanyProfile {
-  if (!value || typeof value !== 'object') return false;
+function parseCompanyProfile(value: unknown): CompanyProfile | null {
+  if (!value || typeof value !== 'object') return null;
   const profile = value as Record<string, unknown>;
-  return ['name', 'vatNumber', 'email', 'phone', 'address', 'logo'].every(
-    (key) => typeof profile[key] === 'string'
-  );
+  if (
+    typeof profile.name !== 'string' ||
+    typeof profile.vatNumber !== 'string' ||
+    typeof profile.email !== 'string' ||
+    typeof profile.phone !== 'string' ||
+    typeof profile.address !== 'string' ||
+    typeof profile.logo !== 'string' ||
+    (profile.stamp !== undefined && typeof profile.stamp !== 'string') ||
+    (profile.signature !== undefined && typeof profile.signature !== 'string')
+  ) {
+    return null;
+  }
+
+  return {
+    name: profile.name,
+    vatNumber: profile.vatNumber,
+    email: profile.email,
+    phone: profile.phone,
+    address: profile.address,
+    logo: profile.logo,
+    stamp: typeof profile.stamp === 'string' ? profile.stamp : '',
+    signature: typeof profile.signature === 'string' ? profile.signature : '',
+  };
 }
 
 function getLocalDate() {
@@ -84,6 +108,8 @@ export default function InvoiceGeneratorPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const stampInputRef = useRef<HTMLInputElement>(null);
+  const signatureInputRef = useRef<HTMLInputElement>(null);
   const nextItemId = useRef(2);
 
   // Browser storage is only available after hydration; initialize client-only values here.
@@ -96,8 +122,9 @@ export default function InvoiceGeneratorPage() {
         const savedProfile = localStorage.getItem(PROFILE_STORAGE_KEY);
         if (savedProfile) {
           const parsedProfile: unknown = JSON.parse(savedProfile);
-          if (isCompanyProfile(parsedProfile)) {
-            setCompany(parsedProfile);
+          const companyProfile = parseCompanyProfile(parsedProfile);
+          if (companyProfile) {
+            setCompany(companyProfile);
           } else {
             setStorageMessage('تعذر قراءة بيانات المؤسسة المحفوظة؛ يمكنك إدخالها من جديد.');
           }
@@ -194,24 +221,27 @@ export default function InvoiceGeneratorPage() {
     }
   };
 
-  const handleLogoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCompanyImageChange = (
+    field: 'logo' | 'stamp' | 'signature',
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      setStorageMessage('يرجى اختيار ملف صورة صالح للشعار.');
+      setStorageMessage('يرجى اختيار ملف صورة صالح.');
       return;
     }
 
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        updateCompany('logo', reader.result);
+        updateCompany(field, reader.result);
         setStorageMessage('');
       }
     };
     reader.onerror = () => {
-      setStorageMessage('تعذر قراءة ملف الشعار. يرجى المحاولة مرة أخرى.');
+      setStorageMessage('تعذر قراءة الصورة. يرجى المحاولة مرة أخرى.');
     };
     reader.readAsDataURL(file);
     event.target.value = '';
@@ -229,8 +259,8 @@ export default function InvoiceGeneratorPage() {
         scale: 2,
         useCORS: true,
         logging: false,
-        windowWidth: invoiceElement.scrollWidth,
-        windowHeight: invoiceElement.scrollHeight,
+        windowWidth: Math.max(invoiceElement.scrollWidth, Math.ceil((210 / 25.4) * 96)),
+        windowHeight: Math.ceil((297 / 25.4) * 96),
         onclone: (clonedDocument) => {
           const clonedInvoice = clonedDocument.getElementById('invoice-print-area');
           const clonedWindow = clonedDocument.defaultView;
@@ -239,6 +269,17 @@ export default function InvoiceGeneratorPage() {
           if (!clonedInvoice || !clonedWindow || !colorContext) {
             throw new Error('تعذر تجهيز الفاتورة لالتقاط PDF.');
           }
+
+          Object.assign(clonedInvoice.style, {
+            boxSizing: 'border-box',
+            width: '210mm',
+            minWidth: '210mm',
+            maxWidth: '210mm',
+            height: '297mm',
+            minHeight: '297mm',
+            maxHeight: '297mm',
+            overflow: 'hidden',
+          });
 
           const colorProperties = [
             'color',
@@ -298,7 +339,10 @@ export default function InvoiceGeneratorPage() {
 
   /* eslint-disable @next/next/no-img-element -- Uploaded logos are local data URLs and should bypass image optimization. */
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100 selection:bg-blue-600 selection:text-white sm:px-6 lg:px-8">
+    <main
+      className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100 selection:bg-blue-600 selection:text-white sm:px-6 lg:px-8"
+      style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}
+    >
       <div className="mx-auto max-w-7xl space-y-8">
         <nav className="no-print flex items-center gap-2 text-sm text-slate-400">
           <Link href="/" className="transition-colors hover:text-blue-400">
@@ -312,10 +356,10 @@ export default function InvoiceGeneratorPage() {
           <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-500/20 bg-blue-600/10 text-3xl text-blue-400">
             🧾
           </span>
-          <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+          <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
             منشئ الفواتير
           </h1>
-          <p className="mx-auto max-w-2xl text-slate-400">
+          <p className="mx-auto max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">
             أنشئ فاتورة احترافية وخصص بياناتها، ثم حمّلها مباشرة بصيغة PDF.
             تتم معالجة بياناتك داخل متصفحك.
           </p>
@@ -410,7 +454,7 @@ export default function InvoiceGeneratorPage() {
                       ref={logoInputRef}
                       type="file"
                       accept="image/*"
-                      onChange={handleLogoChange}
+                      onChange={(event) => handleCompanyImageChange('logo', event)}
                       className="hidden"
                     />
                     <button
@@ -429,6 +473,98 @@ export default function InvoiceGeneratorPage() {
                         إزالة الشعار
                       </button>
                     )}
+                  </div>
+                </div>
+                <div className="space-y-3 text-sm sm:col-span-2">
+                  <div>
+                    <h3 className="font-bold text-slate-200">الختم والتوقيع المعتمد</h3>
+                    <p className="mt-1 text-xs text-slate-400">
+                      تُحفظ الصورتان محليًا مع بيانات المؤسسة عند تفعيل خيار الحفظ.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                      <span className="mb-3 block font-medium text-slate-300">ختم المؤسسة</span>
+                      <div className="flex min-h-20 items-center gap-3">
+                        {company.stamp ? (
+                          <img
+                            src={company.stamp}
+                            alt="معاينة ختم المؤسسة"
+                            className="h-16 w-16 shrink-0 rounded-lg border border-slate-700 bg-white object-contain p-1"
+                          />
+                        ) : (
+                          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-700 text-2xl text-slate-500">
+                            ◉
+                          </span>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <input
+                            ref={stampInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => handleCompanyImageChange('stamp', event)}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => stampInputRef.current?.click()}
+                            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-semibold text-slate-200 transition hover:bg-slate-700"
+                          >
+                            {company.stamp ? 'تغيير الختم' : 'رفع الختم'}
+                          </button>
+                          {company.stamp && (
+                            <button
+                              type="button"
+                              onClick={() => updateCompany('stamp', '')}
+                              className="rounded-lg px-3 py-2 font-medium text-rose-400 transition hover:bg-rose-500/10"
+                            >
+                              حذف
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                      <span className="mb-3 block font-medium text-slate-300">التوقيع المعتمد</span>
+                      <div className="flex min-h-20 items-center gap-3">
+                        {company.signature ? (
+                          <img
+                            src={company.signature}
+                            alt="معاينة التوقيع المعتمد"
+                            className="h-16 w-24 shrink-0 rounded-lg border border-slate-700 bg-white object-contain p-1"
+                          />
+                        ) : (
+                          <span className="flex h-16 w-24 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-700 text-2xl text-slate-500">
+                            ✍
+                          </span>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <input
+                            ref={signatureInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => handleCompanyImageChange('signature', event)}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => signatureInputRef.current?.click()}
+                            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-semibold text-slate-200 transition hover:bg-slate-700"
+                          >
+                            {company.signature ? 'تغيير التوقيع' : 'رفع التوقيع'}
+                          </button>
+                          {company.signature && (
+                            <button
+                              type="button"
+                              onClick={() => updateCompany('signature', '')}
+                              className="rounded-lg px-3 py-2 font-medium text-rose-400 transition hover:bg-rose-500/10"
+                            >
+                              حذف
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -558,9 +694,10 @@ export default function InvoiceGeneratorPage() {
                         type="number"
                         min="0"
                         step="0.01"
+                        dir="ltr"
                         value={item.quantity}
                         onChange={(event) => updateItem(item.id, 'quantity', event.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-blue-500"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-left tabular-nums text-white outline-none focus:border-blue-500"
                       />
                     </label>
                     <label className="space-y-2 text-sm sm:col-span-3">
@@ -569,9 +706,10 @@ export default function InvoiceGeneratorPage() {
                         type="number"
                         min="0"
                         step="0.01"
+                        dir="ltr"
                         value={item.unitPrice}
                         onChange={(event) => updateItem(item.id, 'unitPrice', event.target.value)}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-blue-500"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-left tabular-nums text-white outline-none focus:border-blue-500"
                       />
                     </label>
                     <div className="flex items-end justify-between gap-3 sm:col-span-2 sm:flex-col sm:items-end">
@@ -605,12 +743,13 @@ export default function InvoiceGeneratorPage() {
                     min="0"
                     max="100"
                     step="0.01"
+                    dir="ltr"
                     value={discountPercent}
                     onChange={(event) => {
                       const value = Number(event.target.value);
                       setDiscountPercent(Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0);
                     }}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-blue-500"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-left tabular-nums text-white outline-none focus:border-blue-500"
                   />
                 </label>
                 <div className="text-left text-sm text-slate-400">
@@ -670,17 +809,20 @@ export default function InvoiceGeneratorPage() {
             <article
               id="invoice-print-area"
               className="invoice-sheet mx-auto min-h-[297mm] w-full max-w-[210mm] rounded-xl bg-white p-6 text-slate-900 shadow-2xl sm:p-10 lg:p-12"
+              style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}
             >
-              <div className="flex items-start justify-between gap-5 border-b-2 border-blue-600 pb-6">
+              <div className="flex items-start justify-between gap-5 border-b-2 border-blue-600 pb-5">
                 <div className="min-w-0">
-                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
+                  <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-700">
                     {vatEnabled ? 'TAX INVOICE' : 'INVOICE'}
                   </p>
-                  <h2 className="text-3xl font-extrabold text-slate-900">
+                  <h2 className="text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
                     {vatEnabled ? 'فاتورة ضريبية' : 'فاتورة'}
                   </h2>
-                  <p className="mt-2 text-sm text-slate-500">رقم الفاتورة: {invoiceNumber || '—'}</p>
-                  <p className="mt-1 text-sm text-slate-500">تاريخ الإصدار: {formatDate(invoiceDate)}</p>
+                  <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+                    رقم الفاتورة: <span dir="ltr" className="inline-block tabular-nums">{invoiceNumber || '—'}</span>
+                  </p>
+                  <p className="text-sm font-medium leading-6 text-slate-600">تاريخ الإصدار: {formatDate(invoiceDate)}</p>
                 </div>
                 {company.logo ? (
                   <img
@@ -695,10 +837,10 @@ export default function InvoiceGeneratorPage() {
                 )}
               </div>
 
-              <div className="grid gap-6 py-7 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-blue-600">من</p>
-                  <h3 className="font-bold text-slate-900">{company.name || 'اسم المؤسسة'}</h3>
+              <div className="grid gap-6 border-b border-slate-100 py-5 sm:grid-cols-2">
+                <div className="space-y-1 leading-6">
+                  <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">من</p>
+                  <h3 className="text-base font-bold text-slate-900">{company.name || 'اسم المؤسسة'}</h3>
                   {company.address && <p className="whitespace-pre-line text-sm text-slate-600">{company.address}</p>}
                   {company.email && <p dir="auto" className="text-sm text-slate-600">{company.email}</p>}
                   {company.phone && <p dir="auto" className="text-sm text-slate-600">{company.phone}</p>}
@@ -706,9 +848,9 @@ export default function InvoiceGeneratorPage() {
                     <p dir="auto" className="text-sm text-slate-600">الرقم الضريبي: {company.vatNumber}</p>
                   )}
                 </div>
-                <div className="space-y-1.5">
-                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-blue-600">إلى</p>
-                  <h3 className="font-bold text-slate-900">{clientName || 'اسم العميل'}</h3>
+                <div className="space-y-1 leading-6">
+                  <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">إلى</p>
+                  <h3 className="text-base font-bold text-slate-900">{clientName || 'اسم العميل'}</h3>
                   {clientAddress && <p className="whitespace-pre-line text-sm text-slate-600">{clientAddress}</p>}
                   {clientEmail && <p dir="auto" className="text-sm text-slate-600">{clientEmail}</p>}
                   {vatEnabled && clientVatNumber && (
@@ -718,14 +860,14 @@ export default function InvoiceGeneratorPage() {
               </div>
 
               <div className="overflow-hidden rounded-xl border border-slate-200">
-                <table className="w-full border-collapse text-right text-xs sm:text-sm">
+                <table className="w-full border-collapse text-right text-xs leading-5 tabular-nums sm:text-sm">
                   <thead className="bg-slate-100 text-slate-700">
                     <tr>
-                      <th className="px-2 py-3 font-bold sm:px-3">الوصف</th>
-                      <th className="px-2 py-3 text-center font-bold sm:px-3">الكمية</th>
-                      <th className="px-2 py-3 text-left font-bold sm:px-3">سعر الوحدة</th>
-                      {vatEnabled && <th className="px-2 py-3 text-center font-bold sm:px-3">الضريبة</th>}
-                      <th className="px-2 py-3 text-left font-bold sm:px-3">الإجمالي</th>
+                      <th className="px-2 py-3 text-right font-bold sm:px-4">الوصف</th>
+                      <th className="px-2 py-3 text-center font-bold sm:px-4">الكمية</th>
+                      <th className="px-2 py-3 text-left font-bold sm:px-4">سعر الوحدة</th>
+                      {vatEnabled && <th className="px-2 py-3 text-center font-bold sm:px-4">الضريبة</th>}
+                      <th className="px-2 py-3 text-left font-bold sm:px-4">الإجمالي</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -733,19 +875,19 @@ export default function InvoiceGeneratorPage() {
                       const lineSubtotal = item.quantity * item.unitPrice;
                       const lineAfterDiscount = lineSubtotal * (1 - discountPercent / 100);
                       return (
-                        <tr key={item.id} className="border-t border-slate-200">
-                          <td className="px-2 py-3 font-medium text-slate-800 sm:px-3">
+                        <tr key={item.id} className="border-t border-slate-100 odd:bg-white even:bg-slate-50/60">
+                          <td className="px-2 py-3 text-right font-medium text-slate-800 sm:px-4">
                             {item.description || '—'}
                           </td>
-                          <td className="px-2 py-3 text-center text-slate-600 sm:px-3">{item.quantity}</td>
-                          <td className="px-2 py-3 text-left text-slate-600 sm:px-3">{formatCurrency(item.unitPrice)}</td>
+                          <td dir="ltr" className="px-2 py-3 text-center text-slate-700 sm:px-4">{item.quantity}</td>
+                          <td dir="ltr" className="whitespace-nowrap px-2 py-3 text-left text-slate-700 sm:px-4">{formatCurrency(item.unitPrice)}</td>
                           {vatEnabled && (
-                            <td className="px-2 py-3 text-center text-slate-600 sm:px-3">
+                            <td className="px-2 py-3 text-center text-slate-700 sm:px-4">
                               {VAT_RATE * 100}%<br />
-                              <span className="text-[10px]">{formatCurrency(lineAfterDiscount * VAT_RATE)}</span>
+                              <span dir="ltr" className="inline-block whitespace-nowrap text-[10px] tabular-nums">{formatCurrency(lineAfterDiscount * VAT_RATE)}</span>
                             </td>
                           )}
-                          <td className="px-2 py-3 text-left font-semibold text-slate-800 sm:px-3">
+                          <td dir="ltr" className="whitespace-nowrap px-2 py-3 text-left font-bold text-slate-900 sm:px-4">
                             {formatCurrency(lineSubtotal)}
                           </td>
                         </tr>
@@ -755,36 +897,67 @@ export default function InvoiceGeneratorPage() {
                 </table>
               </div>
 
-              <div className="mr-auto mt-6 w-full max-w-xs space-y-3 text-sm">
+              <div className="mr-auto mt-5 w-full max-w-xs space-y-2.5 text-sm">
                 <div className="flex justify-between gap-4 text-slate-600">
-                  <span>المجموع الفرعي</span><span>{formatCurrency(totals.subtotal)}</span>
+                  <span className="font-medium">المجموع الفرعي</span><span dir="ltr" className="whitespace-nowrap text-left tabular-nums">{formatCurrency(totals.subtotal)}</span>
                 </div>
                 {totals.discount > 0 && (
                   <div className="flex justify-between gap-4 text-slate-600">
                     <span>الخصم ({discountPercent}%)</span>
-                    <span>- {formatCurrency(totals.discount)}</span>
+                    <span dir="ltr" className="whitespace-nowrap text-left tabular-nums">- {formatCurrency(totals.discount)}</span>
                   </div>
                 )}
                 {vatEnabled && (
                   <div className="flex justify-between gap-4 text-slate-600">
                     <span>ضريبة القيمة المضافة ({VAT_RATE * 100}%)</span>
-                    <span>{formatCurrency(totals.vat)}</span>
+                    <span dir="ltr" className="whitespace-nowrap text-left tabular-nums">{formatCurrency(totals.vat)}</span>
                   </div>
                 )}
-                <div className="flex justify-between gap-4 border-t-2 border-slate-900 pt-3 text-base font-extrabold text-slate-900">
-                  <span>الإجمالي النهائي</span><span>{formatCurrency(totals.total)}</span>
+                <div className="flex justify-between gap-4 border-t border-slate-300 pt-3 text-base font-bold text-slate-900">
+                  <span>الإجمالي النهائي</span><span dir="ltr" className="whitespace-nowrap text-left tabular-nums">{formatCurrency(totals.total)}</span>
                 </div>
               </div>
 
               {iban && (
-                <div className="mt-8 rounded-xl bg-slate-50 p-4">
+                <div className="mt-5 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                   <h3 className="mb-2 text-sm font-bold text-slate-800">بيانات التحويل البنكي</h3>
                   {bankName && <p className="text-sm text-slate-600">البنك: {bankName}</p>}
-                  <p dir="ltr" className="text-left text-sm font-semibold text-slate-700">IBAN: {iban}</p>
+                  <p dir="ltr" className="text-left text-sm font-semibold tabular-nums text-slate-700">IBAN: {iban}</p>
                 </div>
               )}
 
-              <div className="mt-10 border-t border-slate-200 pt-4 text-center text-xs text-slate-400">
+              <div className="mt-5 grid grid-cols-2 gap-5 border-t border-slate-200 pt-4">
+                <div className="flex flex-col items-center text-center">
+                  <h3 className="text-xs font-bold text-slate-700">ختم المنشأة</h3>
+                  <div className="mt-2 flex h-[26mm] w-full items-center justify-center">
+                    {company.stamp ? (
+                      <img
+                        src={company.stamp}
+                        alt="ختم المنشأة"
+                        className="max-h-[22mm] max-w-[55mm] object-contain"
+                      />
+                    ) : (
+                      <span className="h-[22mm] w-[55mm] rounded-lg border border-dashed border-slate-200" />
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col items-center text-center">
+                  <h3 className="text-xs font-bold text-slate-700">توقيع المسؤول المعتمد</h3>
+                  <div className="mt-2 flex h-[26mm] w-full items-center justify-center">
+                    {company.signature ? (
+                      <img
+                        src={company.signature}
+                        alt="توقيع المسؤول المعتمد"
+                        className="max-h-[20mm] max-w-[60mm] object-contain"
+                      />
+                    ) : (
+                      <span className="h-[22mm] w-[55mm] rounded-lg border-b border-dashed border-slate-300" />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 border-t border-slate-100 pt-3 text-center text-xs font-medium text-slate-500">
                 شكرًا لتعاملكم معنا
               </div>
             </article>
@@ -796,8 +969,8 @@ export default function InvoiceGeneratorPage() {
             <span className="text-2xl">🔒</span>
             <h2 className="mt-3 font-bold text-white">خصوصيتك أولًا</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">
-              تُنشأ الفاتورة وتُطبع داخل متصفحك. لا تُرفع بيانات المؤسسة أو العميل أو الشعار إلى خوادمنا.
-              لا يُحفظ محليًا إلا ملف المؤسسة عند تفعيل خيار الحفظ.
+              تُنشأ الفاتورة داخل متصفحك. لا تُرفع بيانات المؤسسة أو العميل أو الشعار أو الختم أو التوقيع إلى خوادمنا.
+              لا تُحفظ بيانات المؤسسة وصورها محليًا إلا عند تفعيل خيار الحفظ.
             </p>
           </article>
           <article className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
@@ -806,6 +979,7 @@ export default function InvoiceGeneratorPage() {
             <ol className="mt-2 list-inside list-decimal space-y-1 text-sm leading-6 text-slate-400">
               <li>أدخل بيانات المؤسسة والعميل.</li>
               <li>أضف البنود والكمية والسعر والخصم.</li>
+              <li>أرفق شعار المؤسسة وختمها وتوقيع المسؤول عند الحاجة.</li>
               <li>فعّل الضريبة عند الحاجة، ثم راجع المعاينة.</li>
               <li>اضغط تنزيل الفاتورة PDF لحفظ نسخة A4.</li>
             </ol>
@@ -819,7 +993,7 @@ export default function InvoiceGeneratorPage() {
             </details>
             <details className="mt-3 border-b border-slate-800 pb-3">
               <summary className="cursor-pointer text-sm font-semibold text-slate-200">ماذا يحدث عند إلغاء الحفظ المحلي؟</summary>
-              <p className="mt-2 text-sm leading-6 text-slate-400">تُمسح بيانات المؤسسة المحفوظة والشعار من التخزين المحلي لهذا المتصفح.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">تُمسح بيانات المؤسسة المحفوظة، بما فيها الشعار والختم والتوقيع، من التخزين المحلي لهذا المتصفح.</p>
             </details>
             <details className="mt-3">
               <summary className="cursor-pointer text-sm font-semibold text-slate-200">كيف أحفظ الفاتورة بصيغة PDF؟</summary>

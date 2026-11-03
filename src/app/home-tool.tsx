@@ -19,7 +19,7 @@ import {
   QrCode,
   ReceiptText,
   Image as ImageIcon,
-  ImagePlus,
+  ImageDown,
 } from "lucide-react";
 
 const tools = [
@@ -34,7 +34,7 @@ const tools = [
   { title: "منشئ رمز QR احترافي", desc: "توليد وتخصيص باركود احترافي عالي الدقة مع إضافة شعارك والألوان المخصصة", href: "/qr-generator", icon: QrCode, color: "from-blue-500 to-violet-600", badge: null },
   { title: "صانع فواتير إلكترونية", desc: "إنشاء وتخصيص فواتير ضريبية A4 معتمدة مع الشعار والختم وحساب الضريبة وحفظ محلي آمن", href: "/invoice-generator", icon: ReceiptText, color: "from-emerald-500 to-teal-600", badge: "احترافي" },
   { title: "محول ومحرر الصور", desc: "تحويل صيغ الصور وتغيير المقاسات وضغطها بأعلى جودة وبشكل فوري داخل المتصفح", href: "/image-converter", icon: ImageIcon, color: "from-sky-500 to-cyan-600", badge: "سريع" },
-  { title: "تحسين وضغط الصور بالذكاء الاصطناعي", desc: "ضغط الصور إلى الحجم المطلوب وإزالة الخلفية محليًا بالذكاء الاصطناعي", href: "/image-tools", icon: ImagePlus, color: "from-fuchsia-500 to-violet-600", badge: "جديد" },
+  { title: "ضغط وتصغير الصور", desc: "ضغط مجموعة صور إلى الحجم المطلوب مع التحكم بالجودة والأبعاد", href: "/image-tools", icon: ImageDown, color: "from-fuchsia-500 to-violet-600", badge: "جديد" },
 ];
 
 export default function HomeTool() {

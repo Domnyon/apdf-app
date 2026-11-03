@@ -16,6 +16,7 @@ import {
   Printer,
   Lock,
   Globe2,
+  QrCode,
 } from "lucide-react";
 
 const tools = [
@@ -27,6 +28,7 @@ const tools = [
   { title: "تحويل شامل (صور / PDF)", desc: "تحويل بين PDF والصور ومجلدات ZIP", href: "/convert", icon: ArrowLeftRight, color: "from-emerald-500 to-teal-600", badge: "شامل" },
   { title: "تدوير الصفحات", desc: "تعديل اتجاه الصفحات المقلوبة بلمسة", href: "/rotate", icon: RotateCw, color: "from-cyan-500 to-blue-600", badge: null },
   { title: "تحويل وتعديل لوورد (AI)", desc: "استخراج نصوص وتعديل المستند بالذكاء", href: "/pdf-to-word", icon: Bot, color: "from-violet-500 to-fuchsia-600", badge: "ذكاء اصطناعي" },
+  { title: "منشئ رمز QR احترافي", desc: "توليد وتخصيص باركود احترافي عالي الدقة مع إضافة شعارك والألوان المخصصة", href: "/qr-generator", icon: QrCode, color: "from-blue-500 to-violet-600", badge: null },
 ];
 
 export default function HomeTool() {

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Image as ImageIcon, ReceiptText } from "lucide-react";
+import { Image as ImageIcon, QrCode, ReceiptText } from "lucide-react";
 
 const tools = [
   {
@@ -17,6 +17,14 @@ const tools = [
     Icon: ReceiptText,
     colors:
       "border-emerald-500/20 bg-emerald-500/10 text-emerald-300 group-hover:border-emerald-400/50 group-hover:bg-emerald-500/20 group-hover:text-emerald-200",
+  },
+  {
+    href: "/qr-generator",
+    label: "منشئ رمز QR",
+    description: "إنشاء رمز QR مخصص",
+    Icon: QrCode,
+    colors:
+      "border-violet-500/20 bg-violet-500/10 text-violet-300 group-hover:border-violet-400/50 group-hover:bg-violet-500/20 group-hover:text-violet-200",
   },
 ];
 

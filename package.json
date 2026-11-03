@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "backup": "powershell -ExecutionPolicy Bypass -File ./scripts/backup.ps1",
+    "restore": "powershell -ExecutionPolicy Bypass -File ./scripts/restore.ps1"
   },
   "dependencies": {
     "@google/genai": "latest",

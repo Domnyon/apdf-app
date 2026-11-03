@@ -20,6 +20,10 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## النسخ الاحتياطي والاستعادة
+
+أنشئ نسخة ZIP نظيفة بالأمر `npm run backup`؛ تُحفظ النسخ في `backups/` ويُستبعد منها مجلدات الاعتماديات والبناء وGit. لاستعادة أحدث نسخة وتشغيل التثبيت والتحقق من البناء، استخدم `npm run restore`. للتعليمات اليدوية وخيارات تحديد نسخة أو مجلد الاستعادة، راجع [دليل النسخ الاحتياطي والاستعادة](./BACKUP_GUIDE.md).
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

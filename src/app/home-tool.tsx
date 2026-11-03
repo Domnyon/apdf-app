@@ -17,6 +17,8 @@ import {
   Lock,
   Globe2,
   QrCode,
+  ReceiptText,
+  Image as ImageIcon,
 } from "lucide-react";
 
 const tools = [
@@ -29,6 +31,8 @@ const tools = [
   { title: "تدوير الصفحات", desc: "تعديل اتجاه الصفحات المقلوبة بلمسة", href: "/rotate", icon: RotateCw, color: "from-cyan-500 to-blue-600", badge: null },
   { title: "تحويل وتعديل لوورد (AI)", desc: "استخراج نصوص وتعديل المستند بالذكاء", href: "/pdf-to-word", icon: Bot, color: "from-violet-500 to-fuchsia-600", badge: "ذكاء اصطناعي" },
   { title: "منشئ رمز QR احترافي", desc: "توليد وتخصيص باركود احترافي عالي الدقة مع إضافة شعارك والألوان المخصصة", href: "/qr-generator", icon: QrCode, color: "from-blue-500 to-violet-600", badge: null },
+  { title: "صانع فواتير إلكترونية", desc: "إنشاء وتخصيص فواتير ضريبية A4 معتمدة مع الشعار والختم وحساب الضريبة وحفظ محلي آمن", href: "/invoice-generator", icon: ReceiptText, color: "from-emerald-500 to-teal-600", badge: "احترافي" },
+  { title: "محول ومحرر الصور", desc: "تحويل صيغ الصور وتغيير المقاسات وضغطها بأعلى جودة وبشكل فوري داخل المتصفح", href: "/image-converter", icon: ImageIcon, color: "from-sky-500 to-cyan-600", badge: "سريع" },
 ];
 
 export default function HomeTool() {
@@ -69,7 +73,11 @@ export default function HomeTool() {
               <Link
                 key={idx}
                 href={tool.href}
-                className="group bg-slate-950/70 hover:bg-slate-900/90 border border-slate-800/80 hover:border-purple-500/50 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 active:scale-95 shadow-lg relative overflow-hidden"
+                className={`group bg-slate-950/70 hover:bg-slate-900/90 border border-slate-800/80 hover:border-purple-500/50 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 active:scale-95 shadow-lg relative overflow-hidden ${
+                  idx === tools.length - 1
+                    ? "col-span-2 mx-auto w-[calc(50%-0.375rem)] sm:col-span-1 sm:mx-0 sm:w-auto"
+                    : ""
+                }`}
               >
                 {tool.badge && (
                   <span className="absolute top-2.5 left-2.5 px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/30 text-[9px] font-black text-purple-300">

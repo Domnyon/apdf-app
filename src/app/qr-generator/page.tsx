@@ -415,7 +415,7 @@ export default function QRGeneratorPage() {
             <div
               role="tablist"
               aria-label="نوع محتوى رمز QR"
-              className="flex gap-2 overflow-x-auto pb-1"
+              className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             >
               {contentTabs.map(({ id, label, icon: Icon }) => (
                 <button

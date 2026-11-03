@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import SiteToolLinks from "@/components/SiteToolLinks";
@@ -22,11 +23,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Nonce-based CSP requires request-time rendering so Next.js can nonce its scripts.
+  await headers();
+
   return (
     <html lang="ar" dir="rtl" className="w-full max-w-full overflow-x-hidden">
       <body

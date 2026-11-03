@@ -19,6 +19,7 @@ import {
   QrCode,
   ReceiptText,
   Image as ImageIcon,
+  ImagePlus,
 } from "lucide-react";
 
 const tools = [
@@ -33,6 +34,7 @@ const tools = [
   { title: "منشئ رمز QR احترافي", desc: "توليد وتخصيص باركود احترافي عالي الدقة مع إضافة شعارك والألوان المخصصة", href: "/qr-generator", icon: QrCode, color: "from-blue-500 to-violet-600", badge: null },
   { title: "صانع فواتير إلكترونية", desc: "إنشاء وتخصيص فواتير ضريبية A4 معتمدة مع الشعار والختم وحساب الضريبة وحفظ محلي آمن", href: "/invoice-generator", icon: ReceiptText, color: "from-emerald-500 to-teal-600", badge: "احترافي" },
   { title: "محول ومحرر الصور", desc: "تحويل صيغ الصور وتغيير المقاسات وضغطها بأعلى جودة وبشكل فوري داخل المتصفح", href: "/image-converter", icon: ImageIcon, color: "from-sky-500 to-cyan-600", badge: "سريع" },
+  { title: "تحسين وضغط الصور بالذكاء الاصطناعي", desc: "ضغط الصور إلى الحجم المطلوب وإزالة الخلفية محليًا بالذكاء الاصطناعي", href: "/image-tools", icon: ImagePlus, color: "from-fuchsia-500 to-violet-600", badge: "جديد" },
 ];
 
 export default function HomeTool() {
@@ -67,17 +69,13 @@ export default function HomeTool() {
 
         {/* Tools Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {tools.map((tool, idx) => {
+          {tools.map((tool) => {
             const Icon = tool.icon;
             return (
               <Link
-                key={idx}
+                key={tool.href}
                 href={tool.href}
-                className={`group bg-slate-950/70 hover:bg-slate-900/90 border border-slate-800/80 hover:border-purple-500/50 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 active:scale-95 shadow-lg relative overflow-hidden ${
-                  idx === tools.length - 1
-                    ? "col-span-2 mx-auto w-[calc(50%-0.375rem)] sm:col-span-1 sm:mx-0 sm:w-auto"
-                    : ""
-                }`}
+                className="group bg-slate-950/70 hover:bg-slate-900/90 border border-slate-800/80 hover:border-purple-500/50 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 active:scale-95 shadow-lg relative overflow-hidden"
               >
                 {tool.badge && (
                   <span className="absolute top-2.5 left-2.5 px-1.5 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/30 text-[9px] font-black text-purple-300">

@@ -11,9 +11,33 @@ export function proxy(request: NextRequest) {
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
 
-  const response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
+  const isCvDomain = [
+    request.headers.get("host"),
+    request.headers.get("x-forwarded-host"),
+  ].some(
+    (host) =>
+      host
+        ?.split(",")[0]
+        .trim()
+        .toLowerCase()
+        .replace(/:\d+$/, "") === "cv.apdf.app",
+  );
+  const pathname = request.nextUrl.pathname;
+  const destinationPath =
+    pathname === "/" || pathname === "/cv" || pathname === "/cv/"
+      ? "/cv/index.html"
+      : pathname.startsWith("/cv/")
+        ? pathname
+        : `/cv${pathname}`;
+  const response = isCvDomain
+    ? NextResponse.rewrite(
+        new URL(destinationPath, request.url),
+        { request: { headers: requestHeaders } },
+      )
+    : NextResponse.next({
+        request: { headers: requestHeaders },
+      });
+
   response.headers.set("Content-Security-Policy", csp);
   return response;
 }
@@ -26,6 +50,10 @@ export const config = {
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },
       ],
+    },
+    {
+      source: "/:path*",
+      has: [{ type: "host", value: "cv.apdf.app" }],
     },
   ],
 };

@@ -25,7 +25,7 @@ export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const destinationPath =
     pathname === "/" || pathname === "/cv" || pathname === "/cv/"
-      ? "/cv/index.html"
+      ? "/cv/page.html"
       : pathname.startsWith("/cv/")
         ? pathname
         : `/cv${pathname}`;

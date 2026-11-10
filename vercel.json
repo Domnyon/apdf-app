@@ -1,0 +1,24 @@
+{
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/cv/index.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "cv.apdf.app"
+        }
+      ]
+    },
+    {
+      "source": "/:path*",
+      "destination": "/cv/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "cv.apdf.app"
+        }
+      ]
+    }
+  ]
+}

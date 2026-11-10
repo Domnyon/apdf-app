@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f7f6">
+    <meta name="description" content="السيرة الذاتية المهنية لوليد دومان، أخصائي إدخال بيانات وأرشفة إلكترونية ودعم مكتبي.">
+    <title>وليد دومان | أخصائي إدخال بيانات وأرشفة إلكترونية</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #172a35;
+        --muted: #64757b;
+        --line: #e2e9e7;
+        --paper: #fff;
+        --canvas: #f5f7f6;
+        --accent: #147c70;
+        --accent-soft: #e8f4f1;
+        --navy: #183541;
+      }
+
+      * { box-sizing: border-box; }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink);
+        font-family: Tahoma, Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.8;
+      }
+
+      a { color: inherit; }
+
+      a:focus-visible {
+        outline: 3px solid #e7a84a;
+        outline-offset: 4px;
+      }
+
+      .page {
+        width: min(100% - 32px, 980px);
+        margin: 48px auto;
+        overflow: hidden;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: 0 18px 55px rgb(23 42 53 / 7%);
+      }
+
+      .hero {
+        position: relative;
+        padding: 48px clamp(24px, 6vw, 64px) 42px;
+        overflow: hidden;
+        background: linear-gradient(125deg, #173541 0%, #20565a 100%);
+        color: #fff;
+      }
+
+      .hero::after {
+        position: absolute;
+        top: -110px;
+        left: -70px;
+        width: 300px;
+        height: 300px;
+        border: 1px solid rgb(255 255 255 / 13%);
+        border-radius: 50%;
+        box-shadow: 0 0 0 34px rgb(255 255 255 / 4%), 0 0 0 68px rgb(255 255 255 / 3%);
+        content: "";
+        pointer-events: none;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        margin: 0 0 12px;
+        color: #bce3d8;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .eyebrow::before {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #71d0b1;
+        content: "";
+      }
+
+      h1, h2, h3, p { margin-top: 0; }
+
+      h1 {
+        margin-bottom: 8px;
+        font-size: clamp(32px, 5vw, 48px);
+        letter-spacing: -.04em;
+        line-height: 1.3;
+      }
+
+      .role {
+        margin-bottom: 20px;
+        color: #e0eeeb;
+        font-size: clamp(17px, 2.4vw, 21px);
+      }
+
+      .location {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        color: #c8dcd9;
+        font-size: 14px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 26px;
+      }
+
+      .button {
+        display: inline-flex;
+        min-height: 46px;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        padding: 9px 18px;
+        border: 1px solid transparent;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 700;
+        text-decoration: none;
+        transition: transform .18s ease, background-color .18s ease;
+      }
+
+      .button:hover { transform: translateY(-2px); }
+      .button-light { background: #fff; color: var(--navy); }
+      .button-outline { border-color: rgb(255 255 255 / 35%); color: #fff; }
+      .button-outline:hover { background: rgb(255 255 255 / 10%); }
+      .button svg { width: 18px; height: 18px; flex: none; }
+
+      .content {
+        display: grid;
+        grid-template-columns: minmax(0, 1.55fr) minmax(230px, .85fr);
+        gap: 42px;
+        padding: 38px clamp(24px, 6vw, 64px) 44px;
+      }
+
+      .main-column, .side-column { min-width: 0; }
+      .section + .section { margin-top: 34px; }
+
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin: 0 0 16px;
+        font-size: 19px;
+        line-height: 1.5;
+      }
+
+      .section-title::before {
+        width: 4px;
+        height: 23px;
+        border-radius: 4px;
+        background: var(--accent);
+        content: "";
+      }
+
+      .summary {
+        margin: 0;
+        color: #43565d;
+        font-size: 15px;
+      }
+
+      .experience-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .experience-item {
+        padding: 16px 18px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #fcfdfc;
+      }
+
+      .experience-item h3 {
+        margin-bottom: 5px;
+        font-size: 15px;
+      }
+
+      .experience-item p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .side-column {
+        padding-right: 28px;
+        border-right: 1px solid var(--line);
+      }
+
+      .skill-list, .document-list {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .skill-list li {
+        position: relative;
+        padding-right: 18px;
+        color: #43565d;
+        font-size: 14px;
+      }
+
+      .skill-list li::before {
+        position: absolute;
+        top: 11px;
+        right: 0;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+        content: "";
+      }
+
+      .document-list li {
+        padding: 12px 14px;
+        border: 1px solid #d6e9e4;
+        border-radius: 12px;
+        background: var(--accent-soft);
+        color: #24574f;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .contact-card {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        background: #fafcfb;
+      }
+
+      .contact-card a {
+        display: block;
+        overflow-wrap: anywhere;
+        color: var(--accent);
+        font-size: 14px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .contact-card a + a { margin-top: 10px; }
+      .contact-card a:hover { text-decoration: underline; }
+
+      footer {
+        padding: 16px 24px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+
+      @media (max-width: 700px) {
+        .page {
+          width: min(100% - 20px, 560px);
+          margin: 10px auto;
+          border-radius: 18px;
+        }
+
+        .hero { padding: 34px 24px 30px; }
+        .content { grid-template-columns: 1fr; gap: 30px; padding-top: 30px; }
+        .side-column { padding: 28px 0 0; border-top: 1px solid var(--line); border-right: 0; }
+        .actions { display: grid; grid-template-columns: 1fr; }
+        .button { width: 100%; }
+      }
+
+      @media print {
+        @page { size: A4; margin: 12mm; }
+
+        body { background: #fff; font-size: 12px; }
+        .page { width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+        .hero { padding: 25px 30px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .hero::after { display: none; }
+        h1 { font-size: 31px; }
+        .role { margin-bottom: 10px; font-size: 16px; }
+        .actions { display: none; }
+        .content { grid-template-columns: 1.45fr .9fr; gap: 24px; padding: 24px 30px; }
+        .side-column { padding-right: 18px; }
+        .section + .section { margin-top: 22px; }
+        .section-title { margin-bottom: 10px; font-size: 16px; }
+        .experience-list { gap: 8px; }
+        .experience-item { padding: 10px 12px; break-inside: avoid; }
+        .document-list li { padding: 8px 10px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        footer { padding: 10px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <p class="eyebrow">السيرة الذاتية المهنية</p>
+        <h1>وليد دومان</h1>
+        <p class="role">أخصائي إدخال بيانات وأرشفة إلكترونية ودعم مكتبي</p>
+        <p class="location">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="17" height="17"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+          جدة، المملكة العربية السعودية
+        </p>
+        <nav class="actions" aria-label="روابط التواصل وتحميل السيرة الذاتية">
+          <a class="button button-light" href="CV_Waleed_Doman_Data_Entry.pdf" download>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 17v3h14v-3"/></svg>
+            تحميل السيرة الذاتية PDF
+          </a>
+          <a class="button button-outline" href="https://wa.me/966556086038" target="_blank" rel="noopener noreferrer">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11.5a8.4 8.4 0 0 1-12.4 7.4L3 20l1.2-4.3A8.4 8.4 0 1 1 20 11.5Z"/><path d="M8.5 8.5c.4 2.3 2.2 4.1 4.5 4.8"/></svg>
+            مراسلة عبر واتساب
+          </a>
+          <a class="button button-outline" href="mailto:wa82id@gmail.com">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>
+            إرسال بريد إلكتروني
+          </a>
+        </nav>
+      </header>
+
+      <div class="content">
+        <div class="main-column">
+          <section class="section" aria-labelledby="profile-title">
+            <h2 class="section-title" id="profile-title">نبذة مهنية</h2>
+            <p class="summary">
+              أخصائي في إدخال البيانات والأرشفة الإلكترونية والدعم المكتبي، يهتم بدقة السجلات وسهولة الوصول إلى الوثائق وتنظيم الأعمال اليومية. يحرص على سرية المعلومات، ومراجعة البيانات، وتقديم مساندة مكتبية عملية تسهم في إنجاز المهام بكفاءة.
+            </p>
+          </section>
+
+          <section class="section" aria-labelledby="experience-title">
+            <h2 class="section-title" id="experience-title">الخبرات العملية</h2>
+            <div class="experience-list">
+              <article class="experience-item">
+                <h3>إدخال البيانات ومراجعتها</h3>
+                <p>إدخال السجلات وتحديثها، والتدقيق على اكتمال البيانات واتساقها، وترتيب الملفات بما يسهل الرجوع إليها.</p>
+              </article>
+              <article class="experience-item">
+                <h3>الأرشفة الإلكترونية وإدارة الوثائق</h3>
+                <p>تصنيف الوثائق وتسميتها وحفظها إلكترونياً، والمحافظة على تنظيم الملفات وسرية محتوياتها.</p>
+              </article>
+              <article class="experience-item">
+                <h3>الدعم المكتبي</h3>
+                <p>مساندة الأعمال المكتبية اليومية، وتجهيز المستندات، ومتابعة المراسلات والمهام الإدارية المعتادة.</p>
+              </article>
+            </div>
+          </section>
+        </div>
+
+        <aside class="side-column">
+          <section class="section" aria-labelledby="skills-title">
+            <h2 class="section-title" id="skills-title">المؤهلات والمهارات الأساسية</h2>
+            <ul class="skill-list">
+              <li>تخصص مهني في إدخال البيانات والأرشفة الإلكترونية والدعم المكتبي</li>
+              <li>الدقة ومراجعة البيانات والسجلات</li>
+              <li>تنظيم الملفات وتصنيف الوثائق</li>
+              <li>الاهتمام بسرية المعلومات</li>
+              <li>تنظيم الوقت ومتابعة المهام المكتبية</li>
+            </ul>
+          </section>
+
+          <section class="section" aria-labelledby="documents-title">
+            <h2 class="section-title" id="documents-title">الوثائق الرسمية</h2>
+            <ul class="document-list">
+              <li>إقامة نظامية قابلة للتحويل</li>
+              <li>رخصة قيادة</li>
+            </ul>
+          </section>
+
+          <section class="section" aria-labelledby="contact-title">
+            <h2 class="section-title" id="contact-title">التواصل</h2>
+            <div class="contact-card">
+              <a href="tel:+966556086038" dir="ltr">+966 55 608 6038</a>
+              <a href="mailto:wa82id@gmail.com" dir="ltr">wa82id@gmail.com</a>
+              <a href="https://wa.me/966556086038" target="_blank" rel="noopener noreferrer">فتح محادثة واتساب</a>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <footer>وليد دومان · جدة، المملكة العربية السعودية</footer>
+    </main>
+  </body>
+</html>

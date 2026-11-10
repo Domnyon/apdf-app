@@ -24,6 +24,7 @@ import {
 
 const tools = [
   { title: "محرر وتوقيع PDF", desc: "توقيع المستندات وإضافة نصوص وأشكال", href: "/editor", icon: FileSignature, color: "from-blue-500 to-indigo-600", badge: "شائع" },
+  { title: "تعديل PDF", desc: "تعبئة مربعات النماذج مع الحفاظ على الصفحات الأصلية", href: "/pdfeditor", icon: FileSignature, color: "from-teal-500 to-cyan-600", badge: "جديد" },
   { title: "دمج ملفات PDF", desc: "دمج عدة ملفات وترتيب الصفحات", href: "/merge", icon: Layers, color: "from-purple-500 to-pink-600", badge: null },
   { title: "تقسيم واستخراج", desc: "حذف صفحات محددة واستخراج ما تحتاجه", href: "/split", icon: Scissors, color: "from-amber-500 to-orange-600", badge: null },
   { title: "ضغط ملفات PDF", desc: "تصغير حجم المستند والحفاظ على الجودة", href: "/compress", icon: Minimize2, color: "from-rose-500 to-red-600", badge: "مطلوب" },

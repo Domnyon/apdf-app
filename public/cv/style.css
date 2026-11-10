@@ -57,18 +57,18 @@ body {
 }
 
 .avatar {
-  display: grid;
-  width: 96px;
-  height: 96px;
-  place-items: center;
-  margin: -48px auto 16px;
-  border: 5px solid #fff;
+  display: block;
+  width: 116px;
+  height: 116px;
+  margin: -58px auto 16px;
+  padding: 5px;
+  border: 1px solid #e8eaee;
   border-radius: 50%;
-  background: #edf0f4;
-  box-shadow: 0 5px 18px rgb(15 23 42 / 12%);
-  color: #26364a;
-  font-size: 2.5rem;
-  font-weight: 750;
+  background: #111827;
+  box-shadow: 0 6px 20px rgb(15 23 42 / 18%);
+  object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .profile-heading h1 {

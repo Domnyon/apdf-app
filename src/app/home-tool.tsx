@@ -20,9 +20,11 @@ import {
   ReceiptText,
   Image as ImageIcon,
   ImageDown,
+  FileText,
 } from "lucide-react";
 
 const tools = [
+  { title: "محرر وورد (Word)", desc: "إنشاء وتحرير مستندات Word بالعربية مع حفظ محلي", href: "/word", icon: FileText, color: "from-indigo-500 to-purple-600", badge: "جديد" },
   { title: "محرر وتوقيع PDF", desc: "توقيع المستندات وإضافة نصوص وأشكال", href: "/editor", icon: FileSignature, color: "from-blue-500 to-indigo-600", badge: "شائع" },
   { title: "تعديل PDF", desc: "تعبئة مربعات النماذج مع الحفاظ على الصفحات الأصلية", href: "/pdfeditor", icon: FileSignature, color: "from-teal-500 to-cyan-600", badge: "جديد" },
   { title: "دمج ملفات PDF", desc: "دمج عدة ملفات وترتيب الصفحات", href: "/merge", icon: Layers, color: "from-purple-500 to-pink-600", badge: null },

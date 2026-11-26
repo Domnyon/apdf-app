@@ -79,6 +79,37 @@ function createCanvasItemId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    let settled = false;
+
+    const handleLoad = () => {
+      if (settled) return;
+      settled = true;
+      img.onload = null;
+      img.onerror = null;
+      resolve(img);
+    };
+    const handleError = () => {
+      if (settled) return;
+      settled = true;
+      img.onload = null;
+      img.onerror = null;
+      reject(new Error("Unable to load an image for the edited document."));
+    };
+
+    img.onload = handleLoad;
+    img.onerror = handleError;
+    img.src = src;
+
+    if (img.complete) {
+      if (img.naturalWidth > 0) handleLoad();
+      else handleError();
+    }
+  });
+}
+
 let editorPdfJsLoadPromise: Promise<EditorPdfJsLibrary> | null = null;
 
 async function loadEditorPdfJs(): Promise<EditorPdfJsLibrary> {
@@ -148,6 +179,7 @@ export default function EditorTool() {
 
   const [processing, setProcessing] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const selectedItem = items.find((it) => it.id === selectedItemId);
 
@@ -375,65 +407,60 @@ export default function EditorTool() {
   };
 
   const renderComposedImage = async (): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const bgImg = new Image();
-      bgImg.onload = async () => {
-        try {
-          const offscreen = document.createElement("canvas");
-          const naturalW = bgImg.naturalWidth || bgImg.width;
-          const naturalH = bgImg.naturalHeight || bgImg.height;
+    if (!activePageImage) throw new Error("No document preview is available.");
 
-          offscreen.width = naturalW;
-          offscreen.height = naturalH;
-          const ctx = offscreen.getContext("2d");
-          if (!ctx) throw new Error("Canvas context unavailable");
+    const bgImg = await loadImageElement(activePageImage);
+    const naturalW = bgImg.naturalWidth || bgImg.width;
+    const naturalH = bgImg.naturalHeight || bgImg.height;
+    if (naturalW === 0 || naturalH === 0) {
+      throw new Error("The document preview has invalid dimensions.");
+    }
 
-          ctx.drawImage(bgImg, 0, 0);
+    const offscreen = document.createElement("canvas");
+    offscreen.width = naturalW;
+    offscreen.height = naturalH;
+    const ctx = offscreen.getContext("2d");
+    if (!ctx) throw new Error("Canvas context unavailable");
 
-          const displayW = previewWrapperRef.current?.clientWidth || naturalW;
-          const scaleMultiplier = naturalW / displayW;
+    ctx.drawImage(bgImg, 0, 0);
 
-          for (const itm of items) {
-            const exactX = itm.percentX * naturalW;
-            const exactY = itm.percentY * naturalH;
-            const exactSize = itm.sizePx * scaleMultiplier;
+    const displayW = previewWrapperRef.current?.clientWidth || naturalW;
+    const scaleMultiplier = naturalW / displayW;
 
-            if (itm.type === "text") {
-              const fontWeightStr = itm.isBold ? "900" : "normal";
-              ctx.font = `${fontWeightStr} ${exactSize}px Arial, Helvetica, sans-serif`;
-              ctx.fillStyle = itm.color || "#000000";
-              ctx.textBaseline = "top";
-              ctx.direction = "rtl";
-              ctx.textAlign = "right";
+    for (const itm of items) {
+      const exactX = itm.percentX * naturalW;
+      const exactY = itm.percentY * naturalH;
+      const exactSize = itm.sizePx * scaleMultiplier;
 
-              const textWidth = ctx.measureText(itm.content).width;
-              ctx.fillText(itm.content, exactX + textWidth, exactY);
-            } else if (itm.type === "image") {
-              const img = new Image();
-              await new Promise<void>((imageResolve, imageReject) => {
-                img.onload = () => {
-                  const ratio = img.height / img.width;
-                  ctx.drawImage(img, exactX, exactY, exactSize, exactSize * ratio);
-                  imageResolve();
-                };
-                img.onerror = () => imageReject(new Error("Unable to load an annotation image."));
-                img.src = itm.content;
-              });
-            }
-          }
+      if (itm.type === "text") {
+        const fontWeightStr = itm.isBold ? "900" : "normal";
+        ctx.font = `${fontWeightStr} ${exactSize}px Arial, Helvetica, sans-serif`;
+        ctx.fillStyle = itm.color || "#000000";
+        ctx.textBaseline = "top";
+        ctx.direction = "rtl";
+        ctx.textAlign = "right";
 
-          resolve(offscreen.toDataURL("image/png"));
-        } catch (error) {
-          reject(error);
+        const textWidth = ctx.measureText(itm.content).width;
+        ctx.fillText(itm.content, exactX + textWidth, exactY);
+      } else if (itm.type === "image") {
+        const img = await loadImageElement(itm.content);
+        const imageW = img.naturalWidth || img.width;
+        const imageH = img.naturalHeight || img.height;
+        if (imageW === 0 || imageH === 0) {
+          throw new Error("An annotation image has invalid dimensions.");
         }
-      };
-      bgImg.onerror = () => reject(new Error("Unable to load the document preview."));
-      bgImg.src = activePageImage!;
-    });
+
+        const ratio = imageH / imageW;
+        ctx.drawImage(img, exactX, exactY, exactSize, exactSize * ratio);
+      }
+    }
+
+    return offscreen.toDataURL("image/png");
   };
 
   // اعتماد التعديلات والانتقال إلى صفحة التحميل والبانر الإعلاني
   const handleCommitEdit = async () => {
+    setSaveError(null);
     setProcessing(true);
     setStatusMsg("جاري حفظ التعديلات وإعداد ملف الـ PDF...");
 
@@ -474,10 +501,12 @@ export default function EditorTool() {
 
       // التحويل لصفحة التحميل والبانر
       setDownloadReady(true);
-    } catch {
-      setStatusMsg("حدث خطأ أثناء حفظ الملف.");
+    } catch (err) {
+      console.error("Save PDF error:", err);
+      setSaveError("تعذر حفظ الملف. تحقق من الصور المضافة وحاول مرة أخرى.");
     } finally {
       setProcessing(false);
+      setStatusMsg(null);
     }
   };
 
@@ -601,6 +630,16 @@ export default function EditorTool() {
           <div className="fixed inset-0 z-50 bg-[#070b12]/80 backdrop-blur-md flex flex-col items-center justify-center gap-3">
             <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
             <span className="text-sm font-bold text-white">{statusMsg || "جاري المعالجة..."}</span>
+          </div>
+        )}
+
+        {saveError && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="rounded-xl border border-rose-500/40 bg-rose-950/70 px-4 py-3 text-sm font-bold text-rose-200"
+          >
+            {saveError}
           </div>
         )}
 
@@ -783,7 +822,11 @@ export default function EditorTool() {
                   </div>
 
                   <button
-                    onClick={handleCommitEdit}
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleCommitEdit();
+                    }}
                     disabled={processing}
                     className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1 shadow-lg shadow-emerald-500/20"
                   >

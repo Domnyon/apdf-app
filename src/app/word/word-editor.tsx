@@ -137,6 +137,65 @@ function trimCheckboxAdjacentSpaces(root: HTMLElement) {
   });
 }
 
+function trimAdjacentText(node: Node | null, edge: "start" | "end"): boolean {
+  if (!node) return false;
+  const textNodes: Text[] = [];
+  if (node.nodeType === Node.TEXT_NODE) {
+    textNodes.push(node as Text);
+  } else {
+    const walker = node.ownerDocument?.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    if (!walker) return false;
+    while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+  }
+
+  if (edge === "end") textNodes.reverse();
+  for (const textNode of textNodes) {
+    textNode.data =
+      edge === "start"
+        ? textNode.data.replace(/^[ \t\u00a0]+/gu, "")
+        : textNode.data.replace(/[ \t\u00a0]+$/gu, "");
+    if (textNode.data) return true;
+    textNode.remove();
+  }
+  return false;
+}
+
+function normalizeCheckboxParagraphs(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>("p, div, li").forEach((block) => {
+    if (!block.querySelector('[data-checkbox="true"]')) return;
+
+    block.style.textAlign = "right";
+    block.style.direction = "rtl";
+    block.style.marginRight = "0px";
+    block.style.paddingRight = "0px";
+    block.style.textIndent = "0px";
+    if (block.getAttribute("align")?.toLowerCase() === "center") {
+      block.removeAttribute("align");
+    }
+
+    block.querySelectorAll<HTMLElement>('[data-checkbox="true"]').forEach((checkbox) => {
+      const previous = checkbox.previousSibling;
+      if (!(previous instanceof HTMLElement && previous.dataset.checkbox === "true")) {
+        trimAdjacentText(previous, "end");
+      }
+
+      const next = checkbox.nextSibling;
+      const isNextCheckbox = next instanceof HTMLElement && next.dataset.checkbox === "true";
+      let hasFollowingContent = false;
+      if (next && !isNextCheckbox) {
+        hasFollowingContent =
+          trimAdjacentText(next, "start") ||
+          (next instanceof HTMLElement &&
+            Boolean(next.textContent?.trim() || next.querySelector("img")));
+      }
+
+      if (next && !isNextCheckbox && hasFollowingContent) {
+        checkbox.after(root.ownerDocument.createTextNode(" "));
+      }
+    });
+  });
+}
+
 function sanitizePastedHtml(html: string): string {
   const parsed = new DOMParser().parseFromString(html, "text/html");
   parsed.querySelectorAll("script, iframe, object, embed").forEach((element) => element.remove());
@@ -200,6 +259,7 @@ function sanitizePastedHtml(html: string): string {
   });
   replaceCheckboxCharacters(parsed.body);
   trimCheckboxAdjacentSpaces(parsed.body);
+  normalizeCheckboxParagraphs(parsed.body);
   const textWalker = parsed.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
   while (textWalker.nextNode()) {
@@ -509,7 +569,7 @@ export default function WordEditor() {
     setErrorMessage(null);
     try {
       const result = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
-      const html = result.value || EMPTY_DOCUMENT;
+      const html = sanitizePastedHtml(result.value || EMPTY_DOCUMENT);
       setDocumentTitle(file.name.replace(/\.docx$/i, "") || "مستند جديد");
       setEditorHtml(html);
       if (editorRef.current) editorRef.current.innerHTML = html;

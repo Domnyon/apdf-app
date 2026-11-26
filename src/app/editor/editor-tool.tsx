@@ -231,7 +231,7 @@ export default function EditorTool() {
     const pdf = await loadingTask.promise;
     const page = await pdf.getPage(pageNum);
 
-    const viewport = page.getViewport({ scale: 1.5 });
+    const viewport = page.getViewport({ scale: 3.0 });
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas context unavailable");
@@ -460,6 +460,8 @@ export default function EditorTool() {
     const ctx = offscreen.getContext("2d");
     if (!ctx) throw new Error("Canvas context unavailable");
 
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     ctx.drawImage(bgImg, 0, 0);
 
     const displayW = previewWrapperRef.current?.clientWidth || naturalW;
@@ -510,8 +512,21 @@ export default function EditorTool() {
       if (mode === "single" || !originalFile) {
         const newPdf = await PDFDocument.create();
         const embedded = await newPdf.embedPng(imgBytes);
-        const page = newPdf.addPage([embedded.width, embedded.height]);
-        page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
+        const isOriginalPdf =
+          originalFile?.type === "application/pdf" || originalFile?.name.toLowerCase().endsWith(".pdf");
+        const originalPdf = isOriginalPdf && originalFile
+          ? await PDFDocument.load(await originalFile.arrayBuffer())
+          : null;
+        const pageSize = originalPdf
+          ? originalPdf.getPage(0).getSize()
+          : { width: embedded.width, height: embedded.height };
+        const page = newPdf.addPage([pageSize.width, pageSize.height]);
+        page.drawImage(embedded, {
+          x: 0,
+          y: 0,
+          width: pageSize.width,
+          height: pageSize.height,
+        });
 
         const bytes = await newPdf.save();
         finalBlob = new Blob([bytes as unknown as BlobPart], { type: "application/pdf" });

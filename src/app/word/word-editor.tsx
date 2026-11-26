@@ -7,6 +7,7 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  CheckSquare,
   ChevronDown,
   Clock3,
   Eraser,
@@ -33,7 +34,7 @@ import mammoth from "mammoth";
 import {
   AlignmentType,
   BorderStyle,
-  Document,
+  Document as DocxDocument,
   HeadingLevel,
   IParagraphOptions,
   ImageRun,
@@ -48,6 +49,8 @@ import {
 const STORAGE_KEY = "apdf-word-editor-draft-v1";
 const EMPTY_DOCUMENT = "<p><br></p>";
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36];
+const CHECKBOX_CLASS =
+  "inline-flex items-center justify-center w-4 h-4 mx-1 border border-slate-700 rounded-sm cursor-pointer select-none align-middle text-xs font-bold";
 
 type Draft = { title: string; html: string };
 type Block = Paragraph | Table;
@@ -85,6 +88,97 @@ function getNodeText(node: Node): string {
   return node.textContent || "";
 }
 
+function makeCheckbox(document: Document, checked: boolean): HTMLSpanElement {
+  const checkbox = document.createElement("span");
+  checkbox.dataset.checkbox = "true";
+  checkbox.dataset.checked = String(checked);
+  checkbox.setAttribute("contenteditable", "false");
+  checkbox.className = CHECKBOX_CLASS;
+  checkbox.textContent = checked ? "✓" : "";
+  return checkbox;
+}
+
+function replaceCheckboxCharacters(root: HTMLElement) {
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    if (/[\uf06f\uf0a8\uf0fe\uf052]/u.test(node.data)) textNodes.push(node);
+  }
+
+  for (const textNode of textNodes) {
+    const fragment = root.ownerDocument.createDocumentFragment();
+    const parts = textNode.data.split(/([\uf06f\uf0a8\uf0fe\uf052])/u);
+    for (const part of parts) {
+      if (/^[\uf06f\uf0a8\uf0fe\uf052]$/u.test(part)) {
+        fragment.appendChild(makeCheckbox(root.ownerDocument, false));
+      } else if (part) {
+        fragment.appendChild(root.ownerDocument.createTextNode(part));
+      }
+    }
+    textNode.replaceWith(fragment);
+  }
+}
+
+function sanitizePastedHtml(html: string): string {
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  parsed.querySelectorAll("script, iframe, object, embed").forEach((element) => element.remove());
+
+  parsed.querySelectorAll("img").forEach((image) => {
+    const source = image.getAttribute("src") || "";
+    if (/^\s*file:\/\//i.test(source)) {
+      const altText = `${image.getAttribute("alt") || ""} ${image.getAttribute("title") || ""}`;
+      const checked = /check(?:ed)?|selected|☑|✓/i.test(altText);
+      image.replaceWith(makeCheckbox(parsed, checked));
+    }
+  });
+
+  parsed.querySelectorAll('input[type="checkbox" i]').forEach((input) => {
+    const checked = input.hasAttribute("checked") || (input as HTMLInputElement).checked;
+    input.replaceWith(makeCheckbox(parsed, checked));
+  });
+
+  parsed.querySelectorAll('[data-checkbox="true"]').forEach((checkbox) => {
+    const checked = checkbox.getAttribute("data-checked") === "true";
+    checkbox.replaceWith(makeCheckbox(parsed, checked));
+  });
+
+  Array.from(parsed.body.querySelectorAll("*")).forEach((element) => {
+    if (/^(o|w):/i.test(element.tagName)) {
+      element.replaceWith(...Array.from(element.childNodes));
+      return;
+    }
+
+    Array.from(element.attributes).forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value;
+      if (
+        name.startsWith("on") ||
+        /file:\/\//i.test(value) ||
+        /^(?:javascript|vbscript):/i.test(value.trim())
+      ) {
+        element.removeAttribute(attribute.name);
+      }
+    });
+  });
+  parsed.querySelectorAll("[src^='file:' i], [href^='file:' i]").forEach((element) => {
+    element.removeAttribute("src");
+    element.removeAttribute("href");
+  });
+  replaceCheckboxCharacters(parsed.body);
+  const textWalker = parsed.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  while (textWalker.nextNode()) {
+    if (/file:\/\//i.test(textWalker.currentNode.textContent || "")) {
+      textNodes.push(textWalker.currentNode as Text);
+    }
+  }
+  textNodes.forEach((node) => {
+    node.data = node.data.replace(/file:\/\/[^\s"'<>)]*/gi, "");
+  });
+  return parsed.body.innerHTML;
+}
+
 function getRunOptions(element: HTMLElement, inherited: RunOptions): RunOptions {
   const options = { ...inherited };
   const tag = element.tagName.toLowerCase();
@@ -109,6 +203,10 @@ function parseRuns(node: Node, inherited: RunOptions = {}): (TextRun | ImageRun)
     return text ? [new TextRun({ text, ...inherited })] : [];
   }
   if (!(node instanceof HTMLElement)) return [];
+
+  if (node.dataset.checkbox === "true") {
+    return [new TextRun({ text: node.dataset.checked === "true" ? "☑ " : "☐ ", ...inherited })];
+  }
 
   if (node.tagName.toLowerCase() === "img") {
     const source = node.getAttribute("src") || "";
@@ -440,6 +538,41 @@ export default function WordEditor() {
     handleEditorInput();
   };
 
+  const insertCheckbox = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    insertHtmlAtSelection(
+      editor,
+      `<span data-checkbox="true" data-checked="false" contenteditable="false" class="${CHECKBOX_CLASS}"></span>`,
+    );
+    handleEditorInput();
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const html = event.clipboardData.getData("text/html");
+    if (!html) {
+      window.setTimeout(handleEditorInput, 0);
+      return;
+    }
+
+    event.preventDefault();
+    const cleanHtml = sanitizePastedHtml(html);
+    insertHtmlAtSelection(event.currentTarget, cleanHtml);
+    handleEditorInput();
+  };
+
+  const handleCheckboxClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const checkbox = target.closest<HTMLElement>('[data-checkbox="true"]');
+    if (!checkbox || !event.currentTarget.contains(checkbox)) return;
+
+    const checked = checkbox.dataset.checked !== "true";
+    checkbox.dataset.checked = String(checked);
+    checkbox.textContent = checked ? "✓" : "";
+    handleEditorInput();
+  };
+
   const createNewDocument = () => {
     if (!window.confirm("هل تريد إنشاء مستند جديد؟ سيتم استبدال محتوى المستند الحالي.")) return;
     setDocumentTitle("مستند جديد");
@@ -453,7 +586,7 @@ export default function WordEditor() {
 
   const exportDocx = async () => {
     try {
-      const documentFile = new Document({
+      const documentFile = new DocxDocument({
         numbering: {
           config: [{
             reference: "word-numbering",
@@ -582,6 +715,7 @@ export default function WordEditor() {
               )}
             </div>
             <ToolbarButton label="إدراج صورة" icon={<ImagePlus className="w-4 h-4" />} onClick={() => imageRef.current?.click()} />
+            <ToolbarButton label="إدراج مربع اختيار" icon={<CheckSquare className="w-4 h-4" />} onClick={insertCheckbox} />
             <ToolbarButton label="فاصل أفقي" icon={<Minus className="w-4 h-4" />} onClick={() => {
               const editor = editorRef.current;
               if (!editor) return;
@@ -606,7 +740,8 @@ export default function WordEditor() {
           suppressContentEditableWarning
           dir="rtl"
           onInput={handleEditorInput}
-          onPaste={() => window.setTimeout(handleEditorInput, 0)}
+          onPaste={handlePaste}
+          onClick={handleCheckboxClick}
           className="min-h-[980px] outline-none text-base leading-8 text-slate-900 [&_h1]:text-3xl [&_h1]:font-black [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:text-xl [&_h3]:font-bold [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-slate-400 [&_td]:p-2 [&_th]:border [&_th]:border-slate-400 [&_th]:p-2 [&_img]:max-w-full [&_img]:h-auto"
           style={{ fontFamily }}
         >

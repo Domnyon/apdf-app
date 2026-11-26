@@ -33,7 +33,7 @@ export function createContentSecurityPolicy({
     "media-src 'self' blob: data:",
     "object-src 'none'",
     "frame-src 'none'",
-    "frame-ancestors 'none'",
+    "frame-ancestors 'self'",
     "base-uri 'self'",
     "form-action 'self'",
     "manifest-src 'self'",

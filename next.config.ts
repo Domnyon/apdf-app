@@ -3,6 +3,7 @@ import { createContentSecurityPolicy } from "./src/lib/security-headers";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  productionBrowserSourceMaps: false,
   async headers() {
     return [
       {
@@ -18,7 +19,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: "X-Frame-Options",
-            value: "DENY",
+            value: "SAMEORIGIN",
           },
           {
             key: "X-XSS-Protection",

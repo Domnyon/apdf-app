@@ -537,7 +537,7 @@ export default function EditorTool() {
 
     const resizeHandler = (currX: number) => {
       const deltaX = currX - startX;
-      const newSize = Math.max(14, Math.min(120, initialSize + deltaX));
+      const newSize = Math.max(7, Math.min(120, initialSize + deltaX));
       setItems((prev) =>
         prev.map((it) => (it.id === itemId ? { ...it, sizePx: newSize } : it))
       );
@@ -806,7 +806,7 @@ export default function EditorTool() {
                         <span className="text-[11px] text-purple-400 font-bold whitespace-nowrap">حجم الخط:</span>
                         <input
                           type="range"
-                          min={14}
+                          min={7}
                           max={72}
                           value={selectedItem.sizePx}
                           onChange={(e) => {

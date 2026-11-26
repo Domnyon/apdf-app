@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   FileSignature,
@@ -191,6 +191,7 @@ export default function EditorTool() {
   const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
 
   const [activePageImage, setActivePageImage] = useState<string | null>(null);
+  const [previewWidth, setPreviewWidth] = useState(0);
   const [items, setItems] = useState<CanvasItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
@@ -219,6 +220,22 @@ export default function EditorTool() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const selectedItem = items.find((it) => it.id === selectedItemId);
+  const displayScale = previewWidth > 0 ? previewWidth / 800 : 1;
+
+  useEffect(() => {
+    const preview = previewWrapperRef.current;
+    if (!preview) return;
+
+    const updatePreviewWidth = () => {
+      const width = preview.clientWidth;
+      setPreviewWidth((currentWidth) => (currentWidth === width ? currentWidth : width));
+    };
+
+    updatePreviewWidth();
+    const observer = new ResizeObserver(updatePreviewWidth);
+    observer.observe(preview);
+    return () => observer.disconnect();
+  }, [activePageImage]);
 
   const renderPdfPageToImage = async (file: File, pageNum: number): Promise<string> => {
     const pdfjsLib = await loadEditorPdfJs();
@@ -464,13 +481,10 @@ export default function EditorTool() {
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(bgImg, 0, 0);
 
-    const displayW = previewWrapperRef.current?.clientWidth || naturalW;
-    const scaleMultiplier = naturalW / displayW;
-
     for (const itm of items) {
       const exactX = itm.percentX * naturalW;
       const exactY = itm.percentY * naturalH;
-      const exactSize = itm.sizePx * scaleMultiplier;
+      const exactSize = (itm.sizePx / 800) * naturalW;
 
       if (itm.type === "text") {
         const fontWeightStr = itm.isBold ? "900" : "normal";
@@ -619,7 +633,7 @@ export default function EditorTool() {
 
     const resizeHandler = (currX: number) => {
       const deltaX = currX - startX;
-      const newSize = Math.max(7, Math.min(120, initialSize + deltaX));
+      const newSize = Math.max(7, Math.min(120, initialSize + deltaX / displayScale));
       setItems((prev) =>
         prev.map((it) => (it.id === itemId ? { ...it, sizePx: newSize } : it))
       );
@@ -913,7 +927,7 @@ export default function EditorTool() {
                           }}
                           className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                         />
-                        <span className="text-[11px] font-bold text-slate-300 w-8">{selectedItem.sizePx}px</span>
+                        <span className="text-[11px] font-bold text-slate-300 w-8">{selectedItem.sizePx}</span>
 
                         <button
                           type="button"
@@ -1196,6 +1210,10 @@ export default function EditorTool() {
                     <img
                       src={activePageImage}
                       alt="الصفحة"
+                      onLoad={() => {
+                        const width = previewWrapperRef.current?.clientWidth || 0;
+                        setPreviewWidth(width);
+                      }}
                       className="max-w-full max-h-[75vh] block rounded-lg pointer-events-none"
                     />
 
@@ -1243,7 +1261,7 @@ export default function EditorTool() {
                           {item.type === "text" ? (
                             <span
                               style={{
-                                fontSize: `${item.sizePx}px`,
+                                fontSize: `${item.sizePx * displayScale}px`,
                                 color: item.color || "#000000",
                                 fontWeight: item.isBold ? 900 : 400,
                                 fontFamily: "Arial, Helvetica, sans-serif",
@@ -1258,7 +1276,7 @@ export default function EditorTool() {
                             <img
                               src={item.content}
                               alt="عنصر"
-                              style={{ width: `${item.sizePx}px` }}
+                              style={{ width: `${item.sizePx * displayScale}px` }}
                               className="pointer-events-none block"
                             />
                           )}

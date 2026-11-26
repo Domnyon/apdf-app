@@ -98,20 +98,23 @@ function makeCheckbox(document: Document, checked: boolean): HTMLSpanElement {
   return checkbox;
 }
 
+const CHECKBOX_GLYPHS = /[\u2610\u2611\u2612\u25a1\u25a2\u274f\u2751\uf06f\uf0a8\uf0fe\uf052]/u;
+const CHECKED_GLYPHS = new Set(["\u2611", "\uf0fe"]);
+
 function replaceCheckboxCharacters(root: HTMLElement) {
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
   while (walker.nextNode()) {
     const node = walker.currentNode as Text;
-    if (/[\uf06f\uf0a8\uf0fe\uf052]/u.test(node.data)) textNodes.push(node);
+    if (CHECKBOX_GLYPHS.test(node.data)) textNodes.push(node);
   }
 
   for (const textNode of textNodes) {
     const fragment = root.ownerDocument.createDocumentFragment();
-    const parts = textNode.data.split(/([\uf06f\uf0a8\uf0fe\uf052])/u);
+    const parts = textNode.data.split(/([\u2610\u2611\u2612\u25a1\u25a2\u274f\u2751\uf06f\uf0a8\uf0fe\uf052])/u);
     for (const part of parts) {
-      if (/^[\uf06f\uf0a8\uf0fe\uf052]$/u.test(part)) {
-        fragment.appendChild(makeCheckbox(root.ownerDocument, false));
+      if (CHECKBOX_GLYPHS.test(part)) {
+        fragment.appendChild(makeCheckbox(root.ownerDocument, CHECKED_GLYPHS.has(part)));
       } else if (part) {
         fragment.appendChild(root.ownerDocument.createTextNode(part));
       }
@@ -120,10 +123,40 @@ function replaceCheckboxCharacters(root: HTMLElement) {
   }
 }
 
+function trimCheckboxAdjacentSpaces(root: HTMLElement) {
+  root.querySelectorAll('[data-checkbox="true"]').forEach((checkbox) => {
+    const previous = checkbox.previousSibling;
+    if (previous?.nodeType === Node.TEXT_NODE) {
+      (previous as Text).data = (previous.textContent || "").replace(/[ \u00a0]{4,}$/u, " ");
+    }
+
+    const next = checkbox.nextSibling;
+    if (next?.nodeType === Node.TEXT_NODE) {
+      (next as Text).data = (next.textContent || "").replace(/^[ \u00a0]{4,}/u, " ");
+    }
+  });
+}
+
 function sanitizePastedHtml(html: string): string {
   const parsed = new DOMParser().parseFromString(html, "text/html");
   parsed.querySelectorAll("script, iframe, object, embed").forEach((element) => element.remove());
 
+  const vmlCheckboxes = Array.from(parsed.body.querySelectorAll("*")).filter((element) => {
+    const tagName = element.tagName.toLowerCase();
+    return (
+      /^v:(?:rect|shape|roundrect)$/.test(tagName) ||
+      element.matches('[style*="mso-element:field-char" i]')
+    );
+  });
+  vmlCheckboxes
+    .filter((element) => !vmlCheckboxes.some((parent) => parent !== element && parent.contains(element)))
+    .forEach((element) => {
+      const marker = `${element.textContent || ""} ${element.getAttribute("alt") || ""} ${element.getAttribute("title") || ""} ${element.outerHTML}`;
+      const checked = /☑|✓|\uf0fe/u.test(marker);
+      element.replaceWith(makeCheckbox(parsed, checked));
+    });
+
+  parsed.querySelectorAll('span[style*="mso-tab-count" i]').forEach((element) => element.remove());
   parsed.querySelectorAll("img").forEach((image) => {
     const source = image.getAttribute("src") || "";
     if (/^\s*file:\/\//i.test(source)) {
@@ -166,6 +199,7 @@ function sanitizePastedHtml(html: string): string {
     element.removeAttribute("href");
   });
   replaceCheckboxCharacters(parsed.body);
+  trimCheckboxAdjacentSpaces(parsed.body);
   const textWalker = parsed.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
   while (textWalker.nextNode()) {

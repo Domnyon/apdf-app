@@ -79,6 +79,15 @@ function createCanvasItemId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function dataUrlToUint8Array(dataUrl: string): Uint8Array {
+  const separatorIndex = dataUrl.indexOf(",");
+  if (separatorIndex === -1) throw new Error("Invalid image data URL.");
+
+  const base64 = dataUrl.slice(separatorIndex + 1);
+  const binary = atob(base64);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
 function loadImageElement(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -108,6 +117,34 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
       else handleError();
     }
   });
+}
+
+async function normalizeImageFileToPng(file: File): Promise<string> {
+  const sourceDataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Unable to read the selected image."));
+        return;
+      }
+      resolve(reader.result);
+    };
+    reader.onerror = () => reject(new Error("Unable to read the selected image."));
+    reader.readAsDataURL(file);
+  });
+
+  const image = await loadImageElement(sourceDataUrl);
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  if (width === 0 || height === 0) throw new Error("The selected image has invalid dimensions.");
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas context unavailable.");
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/png");
 }
 
 let editorPdfJsLoadPromise: Promise<EditorPdfJsLibrary> | null = null;
@@ -337,26 +374,21 @@ export default function EditorTool() {
     setShowTextInputModal(true);
   };
 
-  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setStatusMsg("يرجى اختيار صورة للتوقيع.");
+      setSaveError("يرجى اختيار صورة للتوقيع.");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result !== "string") {
-        setStatusMsg("تعذر قراءة صورة التوقيع.");
-        return;
-      }
-
+    try {
+      const pngDataUrl = await normalizeImageFileToPng(file);
       const newItem: CanvasItem = {
         id: createCanvasItemId(),
         type: "image",
-        content: reader.result,
+        content: pngDataUrl,
         percentX: 0.35,
         percentY: 0.4,
         sizePx: 130,
@@ -364,21 +396,24 @@ export default function EditorTool() {
       setItems((prev) => [...prev, newItem]);
       setSelectedItemId(newItem.id);
       setActiveTool(null);
-      setStatusMsg(null);
-    };
-    reader.onerror = () => setStatusMsg("تعذر قراءة صورة التوقيع.");
-    reader.readAsDataURL(file);
+      setSaveError(null);
+    } catch (error) {
+      console.error("Signature image error:", error);
+      setSaveError("تعذر قراءة صورة التوقيع.");
+    }
   };
 
-  const handleStampUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStampUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
+
+    try {
+      const pngDataUrl = await normalizeImageFileToPng(file);
       const newItem: CanvasItem = {
         id: createCanvasItemId(),
         type: "image",
-        content: reader.result as string,
+        content: pngDataUrl,
         percentX: 0.35,
         percentY: 0.4,
         sizePx: 120,
@@ -386,8 +421,11 @@ export default function EditorTool() {
       setItems((prev) => [...prev, newItem]);
       setSelectedItemId(newItem.id);
       setActiveTool(null);
-    };
-    reader.readAsDataURL(file);
+      setSaveError(null);
+    } catch (error) {
+      console.error("Stamp image error:", error);
+      setSaveError("تعذر قراءة صورة الختم.");
+    }
   };
 
   const saveSignature = () => {
@@ -466,11 +504,11 @@ export default function EditorTool() {
 
     try {
       const editedDataUrl = await renderComposedImage();
+      const imgBytes = dataUrlToUint8Array(editedDataUrl);
       let finalBlob: Blob;
 
       if (mode === "single" || !originalFile) {
         const newPdf = await PDFDocument.create();
-        const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
         const embedded = await newPdf.embedPng(imgBytes);
         const page = newPdf.addPage([embedded.width, embedded.height]);
         page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
@@ -480,7 +518,6 @@ export default function EditorTool() {
       } else {
         const originalBytes = await originalFile.arrayBuffer();
         const pdfDoc = await PDFDocument.load(originalBytes);
-        const imgBytes = await fetch(editedDataUrl).then((res) => res.arrayBuffer());
         const embedded = await pdfDoc.embedPng(imgBytes);
 
         const targetIdx = selectedPageIndex;
@@ -503,7 +540,8 @@ export default function EditorTool() {
       setDownloadReady(true);
     } catch (err) {
       console.error("Save PDF error:", err);
-      setSaveError("تعذر حفظ الملف. تحقق من الصور المضافة وحاول مرة أخرى.");
+      const reason = err instanceof Error ? err.message : String(err);
+      setSaveError(`تعذر حفظ الملف: ${reason}`);
     } finally {
       setProcessing(false);
       setStatusMsg(null);

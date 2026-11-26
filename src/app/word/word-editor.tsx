@@ -49,8 +49,6 @@ import {
 const STORAGE_KEY = "apdf-word-editor-draft-v1";
 const EMPTY_DOCUMENT = "<p><br></p>";
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36];
-const CHECKBOX_CLASS =
-  "inline-flex items-center justify-center w-4 h-4 mx-1 border border-slate-700 rounded-sm cursor-pointer select-none align-middle text-xs font-bold";
 
 type Draft = { title: string; html: string };
 type Block = Paragraph | Table;
@@ -88,16 +86,6 @@ function getNodeText(node: Node): string {
   return node.textContent || "";
 }
 
-function makeCheckbox(document: Document, checked: boolean): HTMLSpanElement {
-  const checkbox = document.createElement("span");
-  checkbox.dataset.checkbox = "true";
-  checkbox.dataset.checked = String(checked);
-  checkbox.setAttribute("contenteditable", "false");
-  checkbox.className = CHECKBOX_CLASS;
-  checkbox.textContent = checked ? "✓" : "";
-  return checkbox;
-}
-
 const CHECKBOX_GLYPHS = /[\u2610\u2611\u2612\u25a1\u25a2\u274f\u2751\uf06f\uf0a8\uf0fe\uf052]/u;
 const CHECKED_GLYPHS = new Set(["\u2611", "\uf0fe"]);
 
@@ -110,90 +98,11 @@ function replaceCheckboxCharacters(root: HTMLElement) {
   }
 
   for (const textNode of textNodes) {
-    const fragment = root.ownerDocument.createDocumentFragment();
-    const parts = textNode.data.split(/([\u2610\u2611\u2612\u25a1\u25a2\u274f\u2751\uf06f\uf0a8\uf0fe\uf052])/u);
-    for (const part of parts) {
-      if (CHECKBOX_GLYPHS.test(part)) {
-        fragment.appendChild(makeCheckbox(root.ownerDocument, CHECKED_GLYPHS.has(part)));
-      } else if (part) {
-        fragment.appendChild(root.ownerDocument.createTextNode(part));
-      }
-    }
-    textNode.replaceWith(fragment);
+    textNode.data = textNode.data.replace(
+      /[\u2610\u2611\u2612\u25a1\u25a2\u274f\u2751\uf06f\uf0a8\uf0fe\uf052]/gu,
+      (glyph) => (CHECKED_GLYPHS.has(glyph) ? "☑" : "☐"),
+    );
   }
-}
-
-function trimCheckboxAdjacentSpaces(root: HTMLElement) {
-  root.querySelectorAll('[data-checkbox="true"]').forEach((checkbox) => {
-    const previous = checkbox.previousSibling;
-    if (previous?.nodeType === Node.TEXT_NODE) {
-      (previous as Text).data = (previous.textContent || "").replace(/[ \u00a0]{4,}$/u, " ");
-    }
-
-    const next = checkbox.nextSibling;
-    if (next?.nodeType === Node.TEXT_NODE) {
-      (next as Text).data = (next.textContent || "").replace(/^[ \u00a0]{4,}/u, " ");
-    }
-  });
-}
-
-function trimAdjacentText(node: Node | null, edge: "start" | "end"): boolean {
-  if (!node) return false;
-  const textNodes: Text[] = [];
-  if (node.nodeType === Node.TEXT_NODE) {
-    textNodes.push(node as Text);
-  } else {
-    const walker = node.ownerDocument?.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-    if (!walker) return false;
-    while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
-  }
-
-  if (edge === "end") textNodes.reverse();
-  for (const textNode of textNodes) {
-    textNode.data =
-      edge === "start"
-        ? textNode.data.replace(/^[ \t\u00a0]+/gu, "")
-        : textNode.data.replace(/[ \t\u00a0]+$/gu, "");
-    if (textNode.data) return true;
-    textNode.remove();
-  }
-  return false;
-}
-
-function normalizeCheckboxParagraphs(root: HTMLElement) {
-  root.querySelectorAll<HTMLElement>("p, div, li").forEach((block) => {
-    if (!block.querySelector('[data-checkbox="true"]')) return;
-
-    block.style.textAlign = "right";
-    block.style.direction = "rtl";
-    block.style.marginRight = "0px";
-    block.style.paddingRight = "0px";
-    block.style.textIndent = "0px";
-    if (block.getAttribute("align")?.toLowerCase() === "center") {
-      block.removeAttribute("align");
-    }
-
-    block.querySelectorAll<HTMLElement>('[data-checkbox="true"]').forEach((checkbox) => {
-      const previous = checkbox.previousSibling;
-      if (!(previous instanceof HTMLElement && previous.dataset.checkbox === "true")) {
-        trimAdjacentText(previous, "end");
-      }
-
-      const next = checkbox.nextSibling;
-      const isNextCheckbox = next instanceof HTMLElement && next.dataset.checkbox === "true";
-      let hasFollowingContent = false;
-      if (next && !isNextCheckbox) {
-        hasFollowingContent =
-          trimAdjacentText(next, "start") ||
-          (next instanceof HTMLElement &&
-            Boolean(next.textContent?.trim() || next.querySelector("img")));
-      }
-
-      if (next && !isNextCheckbox && hasFollowingContent) {
-        checkbox.after(root.ownerDocument.createTextNode(" "));
-      }
-    });
-  });
 }
 
 function sanitizePastedHtml(html: string): string {
@@ -212,27 +121,26 @@ function sanitizePastedHtml(html: string): string {
     .forEach((element) => {
       const marker = `${element.textContent || ""} ${element.getAttribute("alt") || ""} ${element.getAttribute("title") || ""} ${element.outerHTML}`;
       const checked = /☑|✓|\uf0fe/u.test(marker);
-      element.replaceWith(makeCheckbox(parsed, checked));
+      element.replaceWith(parsed.createTextNode(checked ? "☑ " : "☐ "));
     });
 
-  parsed.querySelectorAll('span[style*="mso-tab-count" i]').forEach((element) => element.remove());
   parsed.querySelectorAll("img").forEach((image) => {
     const source = image.getAttribute("src") || "";
     if (/^\s*file:\/\//i.test(source)) {
       const altText = `${image.getAttribute("alt") || ""} ${image.getAttribute("title") || ""}`;
       const checked = /check(?:ed)?|selected|☑|✓/i.test(altText);
-      image.replaceWith(makeCheckbox(parsed, checked));
+      image.replaceWith(parsed.createTextNode(checked ? "☑ " : "☐ "));
     }
   });
 
   parsed.querySelectorAll('input[type="checkbox" i]').forEach((input) => {
     const checked = input.hasAttribute("checked") || (input as HTMLInputElement).checked;
-    input.replaceWith(makeCheckbox(parsed, checked));
+    input.replaceWith(parsed.createTextNode(checked ? "☑ " : "☐ "));
   });
 
   parsed.querySelectorAll('[data-checkbox="true"]').forEach((checkbox) => {
     const checked = checkbox.getAttribute("data-checked") === "true";
-    checkbox.replaceWith(makeCheckbox(parsed, checked));
+    checkbox.replaceWith(parsed.createTextNode(checked ? "☑ " : "☐ "));
   });
 
   Array.from(parsed.body.querySelectorAll("*")).forEach((element) => {
@@ -258,8 +166,6 @@ function sanitizePastedHtml(html: string): string {
     element.removeAttribute("href");
   });
   replaceCheckboxCharacters(parsed.body);
-  trimCheckboxAdjacentSpaces(parsed.body);
-  normalizeCheckboxParagraphs(parsed.body);
   const textWalker = parsed.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
   while (textWalker.nextNode()) {
@@ -297,10 +203,6 @@ function parseRuns(node: Node, inherited: RunOptions = {}): (TextRun | ImageRun)
     return text ? [new TextRun({ text, ...inherited })] : [];
   }
   if (!(node instanceof HTMLElement)) return [];
-
-  if (node.dataset.checkbox === "true") {
-    return [new TextRun({ text: node.dataset.checked === "true" ? "☑ " : "☐ ", ...inherited })];
-  }
 
   if (node.tagName.toLowerCase() === "img") {
     const source = node.getAttribute("src") || "";
@@ -635,10 +537,8 @@ export default function WordEditor() {
   const insertCheckbox = () => {
     const editor = editorRef.current;
     if (!editor) return;
-    insertHtmlAtSelection(
-      editor,
-      `<span data-checkbox="true" data-checked="false" contenteditable="false" class="${CHECKBOX_CLASS}"></span>`,
-    );
+    editor.focus();
+    document.execCommand("insertText", false, "☐ ");
     handleEditorInput();
   };
 
@@ -652,18 +552,6 @@ export default function WordEditor() {
     event.preventDefault();
     const cleanHtml = sanitizePastedHtml(html);
     insertHtmlAtSelection(event.currentTarget, cleanHtml);
-    handleEditorInput();
-  };
-
-  const handleCheckboxClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const checkbox = target.closest<HTMLElement>('[data-checkbox="true"]');
-    if (!checkbox || !event.currentTarget.contains(checkbox)) return;
-
-    const checked = checkbox.dataset.checked !== "true";
-    checkbox.dataset.checked = String(checked);
-    checkbox.textContent = checked ? "✓" : "";
     handleEditorInput();
   };
 
@@ -835,7 +723,6 @@ export default function WordEditor() {
           dir="rtl"
           onInput={handleEditorInput}
           onPaste={handlePaste}
-          onClick={handleCheckboxClick}
           className="min-h-[980px] outline-none text-base leading-8 text-slate-900 [&_h1]:text-3xl [&_h1]:font-black [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:text-xl [&_h3]:font-bold [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-slate-400 [&_td]:p-2 [&_th]:border [&_th]:border-slate-400 [&_th]:p-2 [&_img]:max-w-full [&_img]:h-auto"
           style={{ fontFamily }}
         >

@@ -47,11 +47,6 @@ body {
   @apply border-purple-500 bg-purple-600 text-white hover:bg-purple-500;
 }
 
-.word-paper :is(p, div, li):has([data-checkbox="true"]) {
-  direction: rtl;
-  text-align: start;
-}
-
 @media print {
   @page {
     size: A4;

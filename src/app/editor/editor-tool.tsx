@@ -18,6 +18,7 @@ import {
   Loader2,
   X,
   Bold,
+  Pencil,
   Download,
   CheckCircle2,
   ShieldCheck,
@@ -72,6 +73,10 @@ function isEditorPdfJsLibrary(value: unknown): value is EditorPdfJsLibrary {
     workerOptions !== null &&
     typeof Reflect.get(workerOptions, "workerSrc") === "string"
   );
+}
+
+function createCanvasItemId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 let editorPdfJsLoadPromise: Promise<EditorPdfJsLibrary> | null = null;
@@ -131,8 +136,12 @@ export default function EditorTool() {
   const [rawText, setRawText] = useState("");
   const [selectedColor, setSelectedColor] = useState("#000000");
   const [isBoldText, setIsBoldText] = useState(true);
+  const [isPlacingText, setIsPlacingText] = useState(false);
+  const [textPosition, setTextPosition] = useState({ x: 0.3, y: 0.4 });
+  const [editingTextItemId, setEditingTextItemId] = useState<string | null>(null);
 
   const [activeTool, setActiveTool] = useState<"signature" | "stamp" | null>(null);
+  const [signatureMode, setSignatureMode] = useState<"draw" | "upload">("draw");
   const previewWrapperRef = useRef<HTMLDivElement | null>(null);
   const sigCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -235,21 +244,98 @@ export default function EditorTool() {
   const handleConfirmTextInsert = () => {
     if (!rawText.trim()) return;
 
-    const newItem: CanvasItem = {
-      id: Date.now().toString(),
-      type: "text",
-      content: rawText,
-      percentX: 0.3,
-      percentY: 0.4,
-      sizePx: 26,
-      color: selectedColor,
-      isBold: isBoldText,
-    };
+    if (editingTextItemId) {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === editingTextItemId
+            ? { ...item, content: rawText, color: selectedColor, isBold: isBoldText }
+            : item
+        )
+      );
+      setSelectedItemId(editingTextItemId);
+    } else {
+      const newItem: CanvasItem = {
+        id: createCanvasItemId(),
+        type: "text",
+        content: rawText,
+        percentX: textPosition.x,
+        percentY: textPosition.y,
+        sizePx: 26,
+        color: selectedColor,
+        isBold: isBoldText,
+      };
 
-    setItems((prev) => [...prev, newItem]);
-    setSelectedItemId(newItem.id);
+      setItems((prev) => [...prev, newItem]);
+      setSelectedItemId(newItem.id);
+    }
+
     setRawText("");
     setShowTextInputModal(false);
+    setEditingTextItemId(null);
+  };
+
+  const beginTextPlacement = () => {
+    setEditingTextItemId(null);
+    setRawText("");
+    setSelectedColor("#000000");
+    setIsBoldText(true);
+    setSelectedItemId(null);
+    setIsPlacingText(true);
+    setShowTextInputModal(false);
+  };
+
+  const beginTextEdit = (item: CanvasItem) => {
+    setEditingTextItemId(item.id);
+    setRawText(item.content);
+    setSelectedColor(item.color || "#000000");
+    setIsBoldText(Boolean(item.isBold));
+    setShowTextInputModal(true);
+  };
+
+  const handlePlaceText = (clientX: number, clientY: number) => {
+    const container = previewWrapperRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    setTextPosition({
+      x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+    });
+    setIsPlacingText(false);
+    setShowTextInputModal(true);
+  };
+
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setStatusMsg("يرجى اختيار صورة للتوقيع.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        setStatusMsg("تعذر قراءة صورة التوقيع.");
+        return;
+      }
+
+      const newItem: CanvasItem = {
+        id: createCanvasItemId(),
+        type: "image",
+        content: reader.result,
+        percentX: 0.35,
+        percentY: 0.4,
+        sizePx: 130,
+      };
+      setItems((prev) => [...prev, newItem]);
+      setSelectedItemId(newItem.id);
+      setActiveTool(null);
+      setStatusMsg(null);
+    };
+    reader.onerror = () => setStatusMsg("تعذر قراءة صورة التوقيع.");
+    reader.readAsDataURL(file);
   };
 
   const handleStampUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -258,7 +344,7 @@ export default function EditorTool() {
     const reader = new FileReader();
     reader.onload = () => {
       const newItem: CanvasItem = {
-        id: Date.now().toString(),
+        id: createCanvasItemId(),
         type: "image",
         content: reader.result as string,
         percentX: 0.35,
@@ -276,7 +362,7 @@ export default function EditorTool() {
     if (!sigCanvasRef.current) return;
     const dataUrl = sigCanvasRef.current.toDataURL("image/png");
     const newItem: CanvasItem = {
-      id: Date.now().toString(),
+      id: createCanvasItemId(),
       type: "image",
       content: dataUrl,
       percentX: 0.35,
@@ -289,50 +375,60 @@ export default function EditorTool() {
   };
 
   const renderComposedImage = async (): Promise<string> => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const bgImg = new Image();
-      bgImg.src = activePageImage!;
       bgImg.onload = async () => {
-        const offscreen = document.createElement("canvas");
-        const naturalW = bgImg.naturalWidth || bgImg.width;
-        const naturalH = bgImg.naturalHeight || bgImg.height;
+        try {
+          const offscreen = document.createElement("canvas");
+          const naturalW = bgImg.naturalWidth || bgImg.width;
+          const naturalH = bgImg.naturalHeight || bgImg.height;
 
-        offscreen.width = naturalW;
-        offscreen.height = naturalH;
-        const ctx = offscreen.getContext("2d")!;
+          offscreen.width = naturalW;
+          offscreen.height = naturalH;
+          const ctx = offscreen.getContext("2d");
+          if (!ctx) throw new Error("Canvas context unavailable");
 
-        ctx.drawImage(bgImg, 0, 0);
+          ctx.drawImage(bgImg, 0, 0);
 
-        const displayW = previewWrapperRef.current?.clientWidth || naturalW;
-        const scaleMultiplier = naturalW / displayW;
+          const displayW = previewWrapperRef.current?.clientWidth || naturalW;
+          const scaleMultiplier = naturalW / displayW;
 
-        for (const itm of items) {
-          const exactX = itm.percentX * naturalW;
-          const exactY = itm.percentY * naturalH;
-          const exactSize = itm.sizePx * scaleMultiplier;
+          for (const itm of items) {
+            const exactX = itm.percentX * naturalW;
+            const exactY = itm.percentY * naturalH;
+            const exactSize = itm.sizePx * scaleMultiplier;
 
-          if (itm.type === "text") {
-            const fontWeightStr = itm.isBold ? "900" : "normal";
-            ctx.font = `${fontWeightStr} ${exactSize}px 'Cairo', sans-serif`;
-            ctx.fillStyle = itm.color || "#000000";
-            ctx.textBaseline = "top";
-            ctx.textAlign = "left";
+            if (itm.type === "text") {
+              const fontWeightStr = itm.isBold ? "900" : "normal";
+              ctx.font = `${fontWeightStr} ${exactSize}px Arial, Helvetica, sans-serif`;
+              ctx.fillStyle = itm.color || "#000000";
+              ctx.textBaseline = "top";
+              ctx.direction = "rtl";
+              ctx.textAlign = "right";
 
-            ctx.fillText(itm.content, exactX, exactY);
-          } else if (itm.type === "image") {
-            const img = new Image();
-            img.src = itm.content;
-            await new Promise((r) => {
-              img.onload = () => {
-                const ratio = img.height / img.width;
-                ctx.drawImage(img, exactX, exactY, exactSize, exactSize * ratio);
-                r(null);
-              };
-            });
+              const textWidth = ctx.measureText(itm.content).width;
+              ctx.fillText(itm.content, exactX + textWidth, exactY);
+            } else if (itm.type === "image") {
+              const img = new Image();
+              await new Promise<void>((imageResolve, imageReject) => {
+                img.onload = () => {
+                  const ratio = img.height / img.width;
+                  ctx.drawImage(img, exactX, exactY, exactSize, exactSize * ratio);
+                  imageResolve();
+                };
+                img.onerror = () => imageReject(new Error("Unable to load an annotation image."));
+                img.src = itm.content;
+              });
+            }
           }
+
+          resolve(offscreen.toDataURL("image/png"));
+        } catch (error) {
+          reject(error);
         }
-        resolve(offscreen.toDataURL("image/png"));
       };
+      bgImg.onerror = () => reject(new Error("Unable to load the document preview."));
+      bgImg.src = activePageImage!;
     });
   };
 
@@ -663,7 +759,7 @@ export default function EditorTool() {
                 <div className="flex items-center justify-between gap-2 bg-slate-950/90 border border-slate-800 p-2.5 rounded-2xl backdrop-blur-md">
                   <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => setShowTextInputModal(true)}
+                      onClick={beginTextPlacement}
                       className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 bg-purple-600 hover:bg-purple-500 text-white shadow-md transition"
                     >
                       <Type className="w-3.5 h-3.5" /> كتابة نص
@@ -697,9 +793,16 @@ export default function EditorTool() {
 
                 {/* شريط تحكم سريع بالعنصر المختار */}
                 {selectedItem && (
-                  <div className="p-2.5 bg-slate-900/95 border border-purple-500/30 rounded-xl flex items-center justify-between gap-2 text-xs">
+                  <div className="p-2.5 bg-slate-900/95 border border-purple-500/30 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
                     {selectedItem.type === "text" && (
-                      <div className="flex items-center gap-3 w-full">
+                      <div className="flex flex-1 items-center gap-3 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => beginTextEdit(selectedItem)}
+                          className="px-2 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 flex items-center gap-1 whitespace-nowrap"
+                        >
+                          <Pencil className="w-3.5 h-3.5" /> تعديل النص
+                        </button>
                         <span className="text-[11px] text-purple-400 font-bold whitespace-nowrap">حجم الخط:</span>
                         <input
                           type="range"
@@ -756,10 +859,14 @@ export default function EditorTool() {
                     <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-5 space-y-4 shadow-2xl">
                       <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                         <span className="text-sm font-bold text-white flex items-center gap-1.5">
-                          <Type className="w-4 h-4 text-purple-400" /> إضافة نص جديد
+                          <Type className="w-4 h-4 text-purple-400" />
+                          {editingTextItemId ? "تعديل النص" : "إضافة نص جديد"}
                         </span>
                         <button
-                          onClick={() => setShowTextInputModal(false)}
+                          onClick={() => {
+                            setShowTextInputModal(false);
+                            setEditingTextItemId(null);
+                          }}
                           className="text-slate-400 hover:text-white"
                         >
                           <X className="w-4 h-4" />
@@ -827,7 +934,7 @@ export default function EditorTool() {
                         disabled={!rawText.trim()}
                         className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold py-2.5 rounded-xl text-xs transition"
                       >
-                        إدراج النص على المستند
+                        {editingTextItemId ? "حفظ التعديلات" : "إدراج النص على المستند"}
                       </button>
                     </div>
                   </div>
@@ -835,73 +942,143 @@ export default function EditorTool() {
 
                 {/* لوحة التوقيع */}
                 {activeTool === "signature" && (
-                  <div className="p-3 bg-slate-900 border border-slate-800 rounded-2xl space-y-2">
-                    <span className="text-xs font-bold text-slate-300">ارسم توقيعك بإصبعك أدناه:</span>
-                    <canvas
-                      ref={sigCanvasRef}
-                      width={350}
-                      height={130}
-                      onMouseDown={(e) => {
-                        const ctx = sigCanvasRef.current?.getContext("2d");
-                        if (!ctx) return;
-                        setIsDrawing(true);
-                        ctx.beginPath();
-                        ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
-                      }}
-                      onMouseMove={(e) => {
-                        if (!isDrawing) return;
-                        const ctx = sigCanvasRef.current?.getContext("2d");
-                        if (!ctx) return;
-                        ctx.strokeStyle = "#000000";
-                        ctx.lineWidth = 2.5;
-                        ctx.lineCap = "round";
-                        ctx.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
-                        ctx.stroke();
-                      }}
-                      onMouseUp={() => setIsDrawing(false)}
-                      onTouchStart={(e) => {
-                        const canvas = sigCanvasRef.current;
-                        if (!canvas) return;
-                        const rect = canvas.getBoundingClientRect();
-                        const touch = e.touches[0];
-                        const ctx = canvas.getContext("2d");
-                        if (!ctx) return;
-                        setIsDrawing(true);
-                        ctx.beginPath();
-                        ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
-                      }}
-                      onTouchMove={(e) => {
-                        if (!isDrawing) return;
-                        const canvas = sigCanvasRef.current;
-                        if (!canvas) return;
-                        const rect = canvas.getBoundingClientRect();
-                        const touch = e.touches[0];
-                        const ctx = canvas.getContext("2d");
-                        if (!ctx) return;
-                        ctx.strokeStyle = "#000000";
-                        ctx.lineWidth = 2.5;
-                        ctx.lineCap = "round";
-                        ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
-                        ctx.stroke();
-                      }}
-                      onTouchEnd={() => setIsDrawing(false)}
-                      className="bg-white border border-slate-700 rounded-xl cursor-crosshair w-full max-w-[350px] touch-none"
-                    />
-                    <div className="flex gap-2">
+                  <div className="p-3 bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={saveSignature}
-                        className="bg-purple-500 text-slate-950 px-3 py-1.5 rounded-lg text-xs font-bold"
+                        type="button"
+                        onClick={() => setSignatureMode("draw")}
+                        className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition ${
+                          signatureMode === "draw"
+                            ? "bg-purple-600 text-white border-purple-500"
+                            : "bg-slate-950 text-slate-400 border-slate-800"
+                        }`}
                       >
-                        اعتماد
+                        <PenTool className="w-4 h-4" /> توقيع تفاعلي
                       </button>
                       <button
-                        onClick={() => {
-                          const ctx = sigCanvasRef.current?.getContext("2d");
-                          ctx?.clearRect(0, 0, 350, 130);
-                        }}
-                        className="bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg text-xs"
+                        type="button"
+                        onClick={() => setSignatureMode("upload")}
+                        className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition ${
+                          signatureMode === "upload"
+                            ? "bg-purple-600 text-white border-purple-500"
+                            : "bg-slate-950 text-slate-400 border-slate-800"
+                        }`}
                       >
-                        مسح
+                        <ImageIcon className="w-4 h-4" /> إرفاق صورة توقيع
+                      </button>
+                    </div>
+
+                    <div className={signatureMode === "draw" ? "space-y-2" : "hidden"}>
+                      <span className="text-xs font-bold text-slate-300">ارسم توقيعك بإصبعك أدناه:</span>
+                      <canvas
+                        ref={sigCanvasRef}
+                        width={350}
+                        height={130}
+                        onMouseDown={(e) => {
+                          const ctx = sigCanvasRef.current?.getContext("2d");
+                          if (!ctx) return;
+                          setIsDrawing(true);
+                          ctx.beginPath();
+                          ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+                        }}
+                        onMouseMove={(e) => {
+                          if (!isDrawing) return;
+                          const ctx = sigCanvasRef.current?.getContext("2d");
+                          if (!ctx) return;
+                          ctx.strokeStyle = "#000000";
+                          ctx.lineWidth = 2.5;
+                          ctx.lineCap = "round";
+                          ctx.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+                          ctx.stroke();
+                        }}
+                        onMouseUp={() => setIsDrawing(false)}
+                        onTouchStart={(e) => {
+                          const canvas = sigCanvasRef.current;
+                          if (!canvas) return;
+                          const rect = canvas.getBoundingClientRect();
+                          const touch = e.touches[0];
+                          const ctx = canvas.getContext("2d");
+                          if (!ctx) return;
+                          setIsDrawing(true);
+                          ctx.beginPath();
+                          ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
+                        }}
+                        onTouchMove={(e) => {
+                          if (!isDrawing) return;
+                          const canvas = sigCanvasRef.current;
+                          if (!canvas) return;
+                          const rect = canvas.getBoundingClientRect();
+                          const touch = e.touches[0];
+                          const ctx = canvas.getContext("2d");
+                          if (!ctx) return;
+                          ctx.strokeStyle = "#000000";
+                          ctx.lineWidth = 2.5;
+                          ctx.lineCap = "round";
+                          ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+                          ctx.stroke();
+                        }}
+                        onTouchEnd={() => setIsDrawing(false)}
+                        className="bg-white border border-slate-700 rounded-xl cursor-crosshair w-full max-w-[350px] touch-none"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={saveSignature}
+                          className="bg-purple-500 text-slate-950 px-3 py-1.5 rounded-lg text-xs font-bold"
+                        >
+                          اعتماد
+                        </button>
+                        <button
+                          onClick={() => {
+                            const ctx = sigCanvasRef.current?.getContext("2d");
+                            ctx?.clearRect(0, 0, 350, 130);
+                          }}
+                          className="bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg text-xs"
+                        >
+                          مسح
+                        </button>
+                      </div>
+                    </div>
+
+                    {signatureMode === "upload" && (
+                      <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border border-dashed border-purple-500/50 bg-slate-950/70 text-center cursor-pointer hover:border-purple-400 transition">
+                        <UploadCloud className="w-7 h-7 text-purple-400" />
+                        <span className="text-sm font-bold text-slate-200">اختر صورة توقيع من جهازك</span>
+                        <span className="text-[11px] text-slate-500">PNG أو JPG — ستتم إضافتها إلى المستند</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleSignatureUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                  </div>
+                )}
+
+                {isPlacingText && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border border-purple-500/40 bg-purple-950/40 text-sm">
+                    <span className="font-bold text-purple-100">
+                      المس أو انقر على المكان المطلوب في المستند لوضع النص
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTextPosition({ x: 0.5, y: 0.5 });
+                          setIsPlacingText(false);
+                          setShowTextInputModal(true);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold"
+                      >
+                        وضع في المنتصف
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsPlacingText(false)}
+                        className="p-1.5 rounded-lg text-purple-200 hover:bg-purple-900/60"
+                        aria-label="إلغاء وضع النص"
+                      >
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
@@ -914,6 +1091,9 @@ export default function EditorTool() {
                 >
                   <div
                     ref={previewWrapperRef}
+                    onClick={(e) => {
+                      if (isPlacingText) handlePlaceText(e.clientX, e.clientY);
+                    }}
                     style={{ direction: "ltr" }}
                     className="relative inline-block select-none shadow-2xl"
                   >
@@ -934,8 +1114,14 @@ export default function EditorTool() {
                             position: "absolute",
                             touchAction: "none",
                           }}
-                          className={`cursor-move select-none p-1 transition-all ${
-                            isSelected ? "border border-purple-400/80 rounded" : ""
+                          className={`cursor-move select-none transition-all ${
+                            item.type === "text"
+                              ? isSelected
+                                ? "outline outline-1 outline-purple-300 rounded"
+                                : "outline outline-1 outline-dashed outline-slate-400/70 rounded"
+                              : isSelected
+                                ? "outline outline-1 outline-purple-400/80 rounded"
+                                : ""
                           }`}
                           onMouseDown={(e) => {
                             e.stopPropagation();
@@ -953,6 +1139,10 @@ export default function EditorTool() {
                               );
                             }
                           }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isPlacingText) handlePlaceText(e.clientX, e.clientY);
+                          }}
                         >
                           {item.type === "text" ? (
                             <span
@@ -960,8 +1150,11 @@ export default function EditorTool() {
                                 fontSize: `${item.sizePx}px`,
                                 color: item.color || "#000000",
                                 fontWeight: item.isBold ? 900 : 400,
+                                fontFamily: "Arial, Helvetica, sans-serif",
+                                lineHeight: 1.1,
                               }}
-                              className="whitespace-nowrap block leading-tight px-1 drop-shadow-sm select-none"
+                              dir="auto"
+                              className="whitespace-nowrap block leading-tight drop-shadow-sm select-none"
                             >
                               {item.content}
                             </span>

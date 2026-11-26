@@ -19,6 +19,8 @@ import {
   X,
   Bold,
   Pencil,
+  ZoomIn,
+  ZoomOut,
   Download,
   CheckCircle2,
   ShieldCheck,
@@ -192,6 +194,7 @@ export default function EditorTool() {
 
   const [activePageImage, setActivePageImage] = useState<string | null>(null);
   const [previewWidth, setPreviewWidth] = useState(0);
+  const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [items, setItems] = useState<CanvasItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
@@ -664,6 +667,7 @@ export default function EditorTool() {
     setDownloadReady(false);
     setFinalDownloadUrl(null);
     setActivePageImage(null);
+    setZoomLevel(100);
     setOriginalFile(null);
     setTotalPages(0);
     setItems([]);
@@ -898,6 +902,40 @@ export default function EditorTool() {
                     className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1 shadow-lg shadow-emerald-500/20"
                   >
                     <Check className="w-3.5 h-3.5" /> حفظ الملف
+                  </button>
+                </div>
+
+                <div className="hidden md:flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel((level) => Math.max(100, level - 25))}
+                    disabled={zoomLevel <= 100}
+                    className="p-1 rounded-lg text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label="تصغير المستند"
+                    title="تصغير"
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                  </button>
+                  <span className="min-w-12 text-center text-xs font-bold text-slate-200">{zoomLevel}%</span>
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel((level) => Math.min(200, level + 25))}
+                    disabled={zoomLevel >= 200}
+                    className="p-1 rounded-lg text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label="تكبير المستند"
+                    title="تكبير"
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel(100)}
+                    disabled={zoomLevel === 100}
+                    className="px-1.5 py-1 rounded-lg text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 text-[11px] font-bold"
+                    aria-label="إعادة التكبير إلى 100%"
+                    title="إعادة الضبط"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> 100%
                   </button>
                 </div>
 
@@ -1197,7 +1235,11 @@ export default function EditorTool() {
                 {/* مساحة المستند */}
                 <div
                   onClick={() => setSelectedItemId(null)}
-                  className="relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950 flex justify-center items-center p-2 min-h-[450px]"
+                  className={`relative border border-slate-800 rounded-2xl bg-slate-950 flex justify-center items-center p-2 min-h-[450px] overflow-hidden md:max-h-[80vh] ${
+                    zoomLevel > 100
+                      ? "md:overflow-auto md:justify-start md:items-start"
+                      : "md:overflow-hidden"
+                  }`}
                 >
                   <div
                     ref={previewWrapperRef}
@@ -1205,7 +1247,17 @@ export default function EditorTool() {
                       if (isPlacingText) handlePlaceText(e.clientX, e.clientY);
                     }}
                     style={{ direction: "ltr" }}
-                    className="relative inline-block select-none shadow-2xl"
+                    className={`relative inline-block select-none shadow-2xl ${
+                      zoomLevel === 125
+                        ? "md:w-[125%]"
+                        : zoomLevel === 150
+                          ? "md:w-[150%]"
+                          : zoomLevel === 175
+                            ? "md:w-[175%]"
+                            : zoomLevel === 200
+                              ? "md:w-[200%]"
+                              : ""
+                    }`}
                   >
                     <img
                       src={activePageImage}
@@ -1213,8 +1265,11 @@ export default function EditorTool() {
                       onLoad={() => {
                         const width = previewWrapperRef.current?.clientWidth || 0;
                         setPreviewWidth(width);
+                        setZoomLevel(100);
                       }}
-                      className="max-w-full max-h-[75vh] block rounded-lg pointer-events-none"
+                      className={`block rounded-lg pointer-events-none max-w-full max-h-[75vh] ${
+                        zoomLevel > 100 ? "md:w-full md:max-w-none md:max-h-none" : ""
+                      }`}
                     />
 
                     {items.map((item) => {
